@@ -22,12 +22,12 @@ func NewAPI(svc *service.Service) http.Handler {
 	a := &API{svc: svc}
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /products", a.postUpsertProduct)
-	mux.HandleFunc("GET /products", a.getProductsSearch)
-	mux.HandleFunc("POST /products/merge", a.postMergeProducts)
-	mux.HandleFunc("GET /products/{id}/merge-candidates", a.getMergeCandidates)
-	mux.HandleFunc("GET /products/{id}/offers", a.getProductOffers)
-	mux.HandleFunc("GET /products/{id}", a.getProduct)
+	mux.HandleFunc("POST /goods", a.postUpsertGood)
+	mux.HandleFunc("GET /goods", a.getGoodsSearch)
+	mux.HandleFunc("POST /goods/merge", a.postMergeGoods)
+	mux.HandleFunc("GET /goods/{id}/merge-candidates", a.getMergeCandidates)
+	mux.HandleFunc("GET /goods/{id}/offers", a.getGoodOffers)
+	mux.HandleFunc("GET /goods/{id}", a.getGood)
 
 	mux.HandleFunc("POST /stores", a.postUpsertStore)
 	mux.HandleFunc("GET /stores", a.getStoresSearch)
@@ -45,7 +45,7 @@ func NewAPI(svc *service.Service) http.Handler {
 	mux.HandleFunc("POST /list-items", a.postListItem)
 	mux.HandleFunc("PATCH /list-items/{id}", a.patchListItem)
 
-	mux.HandleFunc("POST /product-identities", a.postProductIdentity)
+	mux.HandleFunc("POST /good-identities", a.postGoodIdentity)
 
 	return mux
 }
@@ -67,47 +67,47 @@ func ptrCreatedBy(r *http.Request) *string {
 	return &v
 }
 
-type productUpsertReq struct {
+type goodUpsertReq struct {
 	ID   uuid.UUID `json:"id"`
 	Name string    `json:"name"`
 }
 
-func (a *API) postUpsertProduct(w http.ResponseWriter, r *http.Request) {
+func (a *API) postUpsertGood(w http.ResponseWriter, r *http.Request) {
 	ownerID, ok := a.owner(w, r)
 	if !ok {
 		return
 	}
-	var req productUpsertReq
+	var req goodUpsertReq
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-	p, err := a.svc.UpsertProduct(r.Context(), ownerID, req.ID, req.Name, ptrCreatedBy(r))
+	g, err := a.svc.UpsertGood(r.Context(), ownerID, req.ID, req.Name, ptrCreatedBy(r))
 	if err != nil {
 		writeSvcErr(w, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, productRespFrom(*p))
+	httpx.WriteJSON(w, http.StatusOK, goodRespFrom(*g))
 }
 
-func (a *API) getProductsSearch(w http.ResponseWriter, r *http.Request) {
+func (a *API) getGoodsSearch(w http.ResponseWriter, r *http.Request) {
 	ownerID, ok := a.owner(w, r)
 	if !ok {
 		return
 	}
 	q := r.URL.Query().Get("q")
-	items, err := a.svc.SearchProducts(r.Context(), ownerID, q)
+	items, err := a.svc.SearchGoods(r.Context(), ownerID, q)
 	if err != nil {
 		writeSvcErr(w, err)
 		return
 	}
-	out := make([]productSnippet, 0, len(items))
-	for _, p := range items {
-		out = append(out, productSnippet{ID: p.ID, Name: p.Name})
+	out := make([]goodSnippet, 0, len(items))
+	for _, g := range items {
+		out = append(out, goodSnippet{ID: g.ID, Name: g.Name})
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
-func (a *API) getProduct(w http.ResponseWriter, r *http.Request) {
+func (a *API) getGood(w http.ResponseWriter, r *http.Request) {
 	ownerID, ok := a.owner(w, r)
 	if !ok {
 		return
@@ -116,29 +116,29 @@ func (a *API) getProduct(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	p, err := a.svc.GetProductCanonical(r.Context(), ownerID, id)
+	g, err := a.svc.GetGoodCanonical(r.Context(), ownerID, id)
 	if err != nil {
 		writeSvcErr(w, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, productRespFrom(*p))
+	httpx.WriteJSON(w, http.StatusOK, goodRespFrom(*g))
 }
 
-type mergeProductsReq struct {
-	SourceProductID uuid.UUID `json:"source_product_id"`
-	TargetProductID uuid.UUID `json:"target_product_id"`
+type mergeGoodsReq struct {
+	SourceGoodID uuid.UUID `json:"source_good_id"`
+	TargetGoodID uuid.UUID `json:"target_good_id"`
 }
 
-func (a *API) postMergeProducts(w http.ResponseWriter, r *http.Request) {
+func (a *API) postMergeGoods(w http.ResponseWriter, r *http.Request) {
 	ownerID, ok := a.owner(w, r)
 	if !ok {
 		return
 	}
-	var req mergeProductsReq
+	var req mergeGoodsReq
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-	if err := a.svc.MergeProducts(r.Context(), ownerID, req.SourceProductID, req.TargetProductID); err != nil {
+	if err := a.svc.MergeGoods(r.Context(), ownerID, req.SourceGoodID, req.TargetGoodID); err != nil {
 		writeSvcErr(w, err)
 		return
 	}
@@ -161,10 +161,10 @@ func (a *API) getMergeCandidates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mapSnippets := func(ps []models.Product) []productSnippet {
-		out := make([]productSnippet, 0, len(ps))
-		for _, p := range ps {
-			out = append(out, productSnippet{ID: p.ID, Name: p.Name})
+	mapSnippets := func(gs []models.Good) []goodSnippet {
+		out := make([]goodSnippet, 0, len(gs))
+		for _, g := range gs {
+			out = append(out, goodSnippet{ID: g.ID, Name: g.Name})
 		}
 		return out
 	}
@@ -177,12 +177,12 @@ func (a *API) getMergeCandidates(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-type productSnippet struct {
+type goodSnippet struct {
 	ID   uuid.UUID `json:"id"`
 	Name string    `json:"name"`
 }
 
-type productResp struct {
+type goodResp struct {
 	ID             uuid.UUID  `json:"id"`
 	OwnerID        uuid.UUID  `json:"owner_id"`
 	Name           string     `json:"name"`
@@ -192,15 +192,15 @@ type productResp struct {
 	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
-func productRespFrom(p models.Product) productResp {
-	return productResp{
-		ID:             p.ID,
-		OwnerID:        p.OwnerID,
-		Name:           p.Name,
-		NormalizedName: p.NormalizedName,
-		MergedInto:     p.MergedInto,
-		CreatedAt:      p.CreatedAt,
-		UpdatedAt:      p.UpdatedAt,
+func goodRespFrom(g models.Good) goodResp {
+	return goodResp{
+		ID:             g.ID,
+		OwnerID:        g.OwnerID,
+		Name:           g.Name,
+		NormalizedName: g.NormalizedName,
+		MergedInto:     g.MergedInto,
+		CreatedAt:      g.CreatedAt,
+		UpdatedAt:      g.UpdatedAt,
 	}
 }
 
@@ -272,9 +272,9 @@ func storeRespFrom(s models.Store) storeResp {
 }
 
 type offerCreateReq struct {
-	ID        uuid.UUID `json:"id"`
-	ProductID uuid.UUID `json:"product_id"`
-	StoreID   uuid.UUID `json:"store_id"`
+	ID      uuid.UUID `json:"id"`
+	GoodID  uuid.UUID `json:"good_id"`
+	StoreID uuid.UUID `json:"store_id"`
 }
 
 func (a *API) postOffer(w http.ResponseWriter, r *http.Request) {
@@ -286,7 +286,7 @@ func (a *API) postOffer(w http.ResponseWriter, r *http.Request) {
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-	o, err := a.svc.CreateOffer(r.Context(), ownerID, req.ID, req.ProductID, req.StoreID, ptrCreatedBy(r))
+	o, err := a.svc.CreateOffer(r.Context(), ownerID, req.ID, req.GoodID, req.StoreID, ptrCreatedBy(r))
 	if err != nil {
 		writeSvcErr(w, err)
 		return
@@ -296,16 +296,16 @@ func (a *API) postOffer(w http.ResponseWriter, r *http.Request) {
 
 func offerRespFrom(o models.Offer) map[string]any {
 	return map[string]any{
-		"id":         o.ID,
-		"owner_id":   o.OwnerID,
-		"product_id": o.ProductID,
-		"store_id":   o.StoreID,
+		"id":        o.ID,
+		"owner_id":  o.OwnerID,
+		"good_id":   o.GoodID,
+		"store_id":  o.StoreID,
 		"created_at": o.CreatedAt,
 		"updated_at": o.UpdatedAt,
 	}
 }
 
-func (a *API) getProductOffers(w http.ResponseWriter, r *http.Request) {
+func (a *API) getGoodOffers(w http.ResponseWriter, r *http.Request) {
 	ownerID, ok := a.owner(w, r)
 	if !ok {
 		return
@@ -518,10 +518,10 @@ func (a *API) getList(w http.ResponseWriter, r *http.Request) {
 			"id":           it.ID,
 			"owner_id":     it.OwnerID,
 			"list_id":      it.ListID,
-			"product_id":   it.ProductID,
+			"good_id":      it.GoodID,
 			"quantity":     it.Quantity,
 			"is_purchased": it.IsPurchased,
-			"product_name": it.ProductName,
+			"good_name":    it.GoodName,
 			"created_at":   it.CreatedAt,
 			"updated_at":   it.UpdatedAt,
 		}
@@ -547,7 +547,7 @@ func (a *API) getList(w http.ResponseWriter, r *http.Request) {
 type listItemCreateReq struct {
 	ID            uuid.UUID  `json:"id"`
 	ListID        uuid.UUID  `json:"list_id"`
-	ProductID     uuid.UUID  `json:"product_id"`
+	GoodID        uuid.UUID  `json:"good_id"`
 	OfferID       *uuid.UUID `json:"offer_id"`
 	Quantity      float64    `json:"quantity"`
 	PriceSnapshot *float64   `json:"price_snapshot"`
@@ -562,7 +562,7 @@ func (a *API) postListItem(w http.ResponseWriter, r *http.Request) {
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-	it, err := a.svc.AddListItem(r.Context(), ownerID, req.ID, req.ListID, req.ProductID, req.OfferID, req.Quantity, req.PriceSnapshot, ptrCreatedBy(r))
+	it, err := a.svc.AddListItem(r.Context(), ownerID, req.ID, req.ListID, req.GoodID, req.OfferID, req.Quantity, req.PriceSnapshot, ptrCreatedBy(r))
 	if err != nil {
 		writeSvcErr(w, err)
 		return
@@ -571,12 +571,12 @@ func (a *API) postListItem(w http.ResponseWriter, r *http.Request) {
 		"id":             it.ID,
 		"owner_id":       it.OwnerID,
 		"list_id":        it.ListID,
-		"product_id":     it.ProductID,
+		"good_id":        it.GoodID,
 		"offer_id":       it.OfferID,
 		"quantity":       it.Quantity,
 		"price_snapshot": it.PriceSnapshot,
 		"is_purchased":   it.IsPurchased,
-		"product_name":   it.ProductName,
+		"good_name":      it.GoodName,
 		"created_at":     it.CreatedAt,
 		"updated_at":     it.UpdatedAt,
 	})
@@ -643,24 +643,24 @@ func (a *API) patchListItem(w http.ResponseWriter, r *http.Request) {
 		"id":             it.ID,
 		"owner_id":       it.OwnerID,
 		"list_id":        it.ListID,
-		"product_id":     it.ProductID,
+		"good_id":        it.GoodID,
 		"offer_id":       it.OfferID,
 		"quantity":       it.Quantity,
 		"price_snapshot": it.PriceSnapshot,
 		"is_purchased":   it.IsPurchased,
-		"product_name":   it.ProductName,
+		"good_name":      it.GoodName,
 		"created_at":     it.CreatedAt,
 		"updated_at":     it.UpdatedAt,
 	})
 }
 
 type identityReq struct {
-	ProductID  uuid.UUID `json:"product_id"`
+	GoodID     uuid.UUID `json:"good_id"`
 	ExternalID string    `json:"external_id"`
 	Source     string    `json:"source"`
 }
 
-func (a *API) postProductIdentity(w http.ResponseWriter, r *http.Request) {
+func (a *API) postGoodIdentity(w http.ResponseWriter, r *http.Request) {
 	ownerID, ok := a.owner(w, r)
 	if !ok {
 		return
@@ -675,7 +675,7 @@ func (a *API) postProductIdentity(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "external_id and source are required")
 		return
 	}
-	if err := a.svc.UpsertProductIdentity(r.Context(), ownerID, req.ProductID, req.ExternalID, req.Source); err != nil {
+	if err := a.svc.UpsertGoodIdentity(r.Context(), ownerID, req.GoodID, req.ExternalID, req.Source); err != nil {
 		writeSvcErr(w, err)
 		return
 	}

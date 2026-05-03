@@ -6,7 +6,8 @@ import (
 	"github.com/google/uuid"
 )
 
-type Product struct {
+// Good — товар в каталоге владельца (каноническая запись с учётом merge).
+type Good struct {
 	ID             uuid.UUID
 	OwnerID        uuid.UUID
 	Name           string
@@ -31,7 +32,7 @@ type Store struct {
 type Offer struct {
 	ID        uuid.UUID
 	OwnerID   uuid.UUID
-	ProductID uuid.UUID
+	GoodID    uuid.UUID
 	StoreID   uuid.UUID
 	CreatedBy *string
 	CreatedAt time.Time
@@ -63,7 +64,7 @@ type ListItem struct {
 	ID            uuid.UUID
 	OwnerID       uuid.UUID
 	ListID        uuid.UUID
-	ProductID     uuid.UUID
+	GoodID        uuid.UUID
 	OfferID       *uuid.UUID
 	Quantity      float64
 	PriceSnapshot *float64

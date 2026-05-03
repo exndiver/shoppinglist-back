@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 )
 
-func (s *Service) CreateOffer(ctx context.Context, ownerID uuid.UUID, id, productID, storeID uuid.UUID, createdBy *string) (*models.Offer, error) {
-	pc, err := repository.ResolveProductCanonical(ctx, s.Pool, ownerID, productID)
+func (s *Service) CreateOffer(ctx context.Context, ownerID uuid.UUID, id, goodID, storeID uuid.UUID, createdBy *string) (*models.Offer, error) {
+	gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, goodID)
 	if err != nil {
 		return nil, err
 	}
@@ -21,7 +21,7 @@ func (s *Service) CreateOffer(ctx context.Context, ownerID uuid.UUID, id, produc
 	}
 
 	if existing, err := repository.GetOffer(ctx, s.Pool, ownerID, id); err == nil {
-		ep, err := repository.ResolveProductCanonical(ctx, s.Pool, ownerID, existing.ProductID)
+		eg, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, existing.GoodID)
 		if err != nil {
 			return nil, err
 		}
@@ -29,7 +29,7 @@ func (s *Service) CreateOffer(ctx context.Context, ownerID uuid.UUID, id, produc
 		if err != nil {
 			return nil, err
 		}
-		if ep == pc && es == sc {
+		if eg == gc && es == sc {
 			return existing, nil
 		}
 		return nil, ErrConflict
@@ -40,13 +40,13 @@ func (s *Service) CreateOffer(ctx context.Context, ownerID uuid.UUID, id, produc
 	o := models.Offer{
 		ID:        id,
 		OwnerID:   ownerID,
-		ProductID: pc,
+		GoodID:    gc,
 		StoreID:   sc,
 		CreatedBy: createdBy,
 	}
 	if err := repository.InsertOffer(ctx, s.Pool, o); err != nil {
 		if pgutil.IsUniqueViolation(err) {
-			triple, terr := repository.FindOfferByTriple(ctx, s.Pool, ownerID, pc, sc)
+			triple, terr := repository.FindOfferByTriple(ctx, s.Pool, ownerID, gc, sc)
 			if terr != nil {
 				return nil, terr
 			}
@@ -60,13 +60,13 @@ func (s *Service) CreateOffer(ctx context.Context, ownerID uuid.UUID, id, produc
 	return repository.GetOffer(ctx, s.Pool, ownerID, id)
 }
 
-func (s *Service) ListOffersWithLatestPrices(ctx context.Context, ownerID, productID uuid.UUID) ([]models.OfferWithLatestPrice, error) {
-	pc, err := repository.ResolveProductCanonical(ctx, s.Pool, ownerID, productID)
+func (s *Service) ListOffersWithLatestPrices(ctx context.Context, ownerID, goodID uuid.UUID) ([]models.OfferWithLatestPrice, error) {
+	gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, goodID)
 	if err != nil {
 		return nil, err
 	}
 
-	offers, err := repository.ListOffersForProduct(ctx, s.Pool, ownerID, pc)
+	offers, err := repository.ListOffersForGood(ctx, s.Pool, ownerID, gc)
 	if err != nil {
 		return nil, err
 	}

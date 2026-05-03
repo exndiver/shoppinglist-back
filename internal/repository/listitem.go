@@ -18,7 +18,7 @@ func scanListItem(row RowScanner) (*models.ListItem, error) {
 		&it.ID,
 		&it.OwnerID,
 		&it.ListID,
-		&it.ProductID,
+		&it.GoodID,
 		&offer,
 		&it.Quantity,
 		&snap,
@@ -60,15 +60,15 @@ func InsertListItem(ctx context.Context, db DBTX, it models.ListItem) error {
 	}
 	_, err := db.Exec(ctx, `
 		INSERT INTO list_items (
-		  id, owner_id, list_id, product_id, offer_id, quantity, price_snapshot, is_purchased, created_by
+		  id, owner_id, list_id, good_id, offer_id, quantity, price_snapshot, is_purchased, created_by
 		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-	`, it.ID, it.OwnerID, it.ListID, it.ProductID, offer, it.Quantity, snap, it.IsPurchased, cb)
+	`, it.ID, it.OwnerID, it.ListID, it.GoodID, offer, it.Quantity, snap, it.IsPurchased, cb)
 	return err
 }
 
 func GetListItem(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.ListItem, error) {
 	row := db.QueryRow(ctx, `
-		SELECT id, owner_id, list_id, product_id, offer_id, quantity, price_snapshot, is_purchased, created_by, created_at, updated_at
+		SELECT id, owner_id, list_id, good_id, offer_id, quantity, price_snapshot, is_purchased, created_by, created_at, updated_at
 		FROM list_items WHERE owner_id = $1 AND id = $2
 	`, ownerID, id)
 	it, err := scanListItem(row)
@@ -80,7 +80,7 @@ func GetListItem(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.L
 
 func ListItemsByList(ctx context.Context, db DBTX, ownerID, listID uuid.UUID) ([]models.ListItem, error) {
 	rows, err := db.Query(ctx, `
-		SELECT id, owner_id, list_id, product_id, offer_id, quantity, price_snapshot, is_purchased, created_by, created_at, updated_at
+		SELECT id, owner_id, list_id, good_id, offer_id, quantity, price_snapshot, is_purchased, created_by, created_at, updated_at
 		FROM list_items
 		WHERE owner_id = $1 AND list_id = $2
 		ORDER BY created_at ASC, id ASC

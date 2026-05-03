@@ -8,12 +8,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func ResolveProductCanonical(ctx context.Context, db DBTX, ownerID, productID uuid.UUID) (uuid.UUID, error) {
-	cur := productID
+func ResolveGoodCanonical(ctx context.Context, db DBTX, ownerID, goodID uuid.UUID) (uuid.UUID, error) {
+	cur := goodID
 	for depth := 0; depth < 64; depth++ {
 		var merged pgtype.UUID
 		err := db.QueryRow(ctx, `
-			SELECT merged_into FROM products WHERE owner_id = $1 AND id = $2
+			SELECT merged_into FROM goods WHERE owner_id = $1 AND id = $2
 		`, ownerID, cur).Scan(&merged)
 		if err == pgx.ErrNoRows {
 			return uuid.Nil, ErrNotFound

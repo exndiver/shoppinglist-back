@@ -8,12 +8,12 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (s *Service) MergeProducts(ctx context.Context, ownerID, sourceProductID, targetProductID uuid.UUID) error {
-	ca, err := repository.ResolveProductCanonical(ctx, s.Pool, ownerID, sourceProductID)
+func (s *Service) MergeGoods(ctx context.Context, ownerID, sourceGoodID, targetGoodID uuid.UUID) error {
+	ca, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, sourceGoodID)
 	if err != nil {
 		return err
 	}
-	cb, err := repository.ResolveProductCanonical(ctx, s.Pool, ownerID, targetProductID)
+	cb, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, targetGoodID)
 	if err != nil {
 		return err
 	}
@@ -27,38 +27,38 @@ func (s *Service) MergeProducts(ctx context.Context, ownerID, sourceProductID, t
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if err := repository.MarkProductMerged(ctx, tx, ownerID, ca, cb); err != nil {
+	if err := repository.MarkGoodMerged(ctx, tx, ownerID, ca, cb); err != nil {
 		return err
 	}
-	if err := repointOffersAfterProductMerge(ctx, tx, ownerID, ca, cb); err != nil {
+	if err := repointOffersAfterGoodMerge(ctx, tx, ownerID, ca, cb); err != nil {
 		return err
 	}
-	if err := repository.RepointListItemsProduct(ctx, tx, ownerID, ca, cb); err != nil {
+	if err := repository.RepointListItemsGood(ctx, tx, ownerID, ca, cb); err != nil {
 		return err
 	}
 	if err := repository.DeleteIdentityConflictsForMerge(ctx, tx, ownerID, ca, cb); err != nil {
 		return err
 	}
-	if err := repository.RepointProductIdentities(ctx, tx, ownerID, ca, cb); err != nil {
+	if err := repository.RepointGoodIdentities(ctx, tx, ownerID, ca, cb); err != nil {
 		return err
 	}
 
 	return tx.Commit(ctx)
 }
 
-func repointOffersAfterProductMerge(ctx context.Context, tx repository.DBTX, ownerID, fromProd, toProd uuid.UUID) error {
-	offers, err := repository.ListOffersForProduct(ctx, tx, ownerID, fromProd)
+func repointOffersAfterGoodMerge(ctx context.Context, tx repository.DBTX, ownerID, fromGood, toGood uuid.UUID) error {
+	offers, err := repository.ListOffersForGood(ctx, tx, ownerID, fromGood)
 	if err != nil {
 		return err
 	}
 
 	for _, o := range offers {
-		existing, err := repository.FindOfferByTriple(ctx, tx, ownerID, toProd, o.StoreID)
+		existing, err := repository.FindOfferByTriple(ctx, tx, ownerID, toGood, o.StoreID)
 		if err != nil && err != repository.ErrNotFound {
 			return err
 		}
 		if err == repository.ErrNotFound {
-			if err := repository.UpdateOfferProductID(ctx, tx, ownerID, o.ID, toProd); err != nil {
+			if err := repository.UpdateOfferGoodID(ctx, tx, ownerID, o.ID, toGood); err != nil {
 				return err
 			}
 			continue

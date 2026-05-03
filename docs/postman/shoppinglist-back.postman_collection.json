@@ -1,14 +1,14 @@
 {
   "info": {
     "name": "Shopping List Backend",
-    "description": "Тесты HTTP API (см. docs/api.md).\n\n**Переменные** (Edit collection → Variables): `baseUrl`, `ownerId`, фиксированные UUID сущностей — при повторном прогоне меняй UUID или чисти БД.\n\n**Collection Runner:** выбери коллекцию → Run — папки идут в порядке сценария: Health → создание продуктов → магазины → офферы/цены → чтение продуктов → списки → идентичности → merge → негативные тесты.\n\nЛишние поля в JSON → 400 (`DisallowUnknownFields`).",
+    "description": "Тесты HTTP API (см. docs/api.md).\n\n**Переменные** (Edit collection → Variables): `baseUrl`, `ownerId`, фиксированные UUID сущностей — при повторном прогоне меняй UUID или чисти БД.\n\n**Collection Runner:** выбери коллекцию → Run — папки идут в порядке сценария: Health → создание товаров → магазины → офферы/цены → чтение товаров → списки → идентичности → merge → негативные тесты.\n\nЛишние поля в JSON → 400 (`DisallowUnknownFields`).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:8080" },
     { "key": "ownerId", "value": "11111111-1111-1111-1111-111111111111" },
-    { "key": "productId", "value": "22222222-2222-2222-2222-222222222222" },
-    { "key": "productId2", "value": "33333333-3333-3333-3333-333333333333" },
+    { "key": "goodId", "value": "22222222-2222-2222-2222-222222222222" },
+    { "key": "goodId2", "value": "33333333-3333-3333-3333-333333333333" },
     { "key": "storeId", "value": "44444444-4444-4444-4444-444444444444" },
     { "key": "offerId", "value": "55555555-5555-5555-5555-555555555555" },
     { "key": "priceRecordId", "value": "66666666-6666-6666-6666-666666666666" },
@@ -32,10 +32,10 @@
       ]
     },
     {
-      "name": "Продукты — создание",
+      "name": "Товары — создание",
       "item": [
         {
-          "name": "POST /products — upsert A",
+          "name": "POST /goods — upsert A",
           "request": {
             "method": "POST",
             "header": [
@@ -45,13 +45,13 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"id\": \"{{productId}}\",\n  \"name\": \"Молоко 3.2%\"\n}"
+              "raw": "{\n  \"id\": \"{{goodId}}\",\n  \"name\": \"Молоко 3.2%\"\n}"
             },
-            "url": "{{baseUrl}}/products"
+            "url": "{{baseUrl}}/goods"
           }
         },
         {
-          "name": "POST /products — upsert B",
+          "name": "POST /goods — upsert B",
           "request": {
             "method": "POST",
             "header": [
@@ -60,9 +60,9 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"id\": \"{{productId2}}\",\n  \"name\": \"Кефир\"\n}"
+              "raw": "{\n  \"id\": \"{{goodId2}}\",\n  \"name\": \"Кефир\"\n}"
             },
-            "url": "{{baseUrl}}/products"
+            "url": "{{baseUrl}}/goods"
           }
         }
       ]
@@ -98,46 +98,46 @@
       ]
     },
     {
-      "name": "Продукты — чтение",
+      "name": "Товары — чтение",
       "item": [
         {
-          "name": "GET /products?q=мол",
+          "name": "GET /goods?q=мол",
           "request": {
             "method": "GET",
             "header": [
               { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
             ],
-            "url": "{{baseUrl}}/products?q=мол"
+            "url": "{{baseUrl}}/goods?q=мол"
           }
         },
         {
-          "name": "GET /products/{id}",
+          "name": "GET /goods/{id}",
           "request": {
             "method": "GET",
             "header": [
               { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
             ],
-            "url": "{{baseUrl}}/products/{{productId}}"
+            "url": "{{baseUrl}}/goods/{{goodId}}"
           }
         },
         {
-          "name": "GET /products/{id}/merge-candidates",
+          "name": "GET /goods/{id}/merge-candidates",
           "request": {
             "method": "GET",
             "header": [
               { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
             ],
-            "url": "{{baseUrl}}/products/{{productId}}/merge-candidates?q=кеф"
+            "url": "{{baseUrl}}/goods/{{goodId}}/merge-candidates?q=кеф"
           }
         },
         {
-          "name": "GET /products/{id}/offers",
+          "name": "GET /goods/{id}/offers",
           "request": {
             "method": "GET",
             "header": [
               { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
             ],
-            "url": "{{baseUrl}}/products/{{productId}}/offers"
+            "url": "{{baseUrl}}/goods/{{goodId}}/offers"
           }
         }
       ]
@@ -155,7 +155,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"id\": \"{{offerId}}\",\n  \"product_id\": \"{{productId}}\",\n  \"store_id\": \"{{storeId}}\"\n}"
+              "raw": "{\n  \"id\": \"{{offerId}}\",\n  \"good_id\": \"{{goodId}}\",\n  \"store_id\": \"{{storeId}}\"\n}"
             },
             "url": "{{baseUrl}}/offers"
           }
@@ -260,7 +260,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"id\": \"{{listItemId}}\",\n  \"list_id\": \"{{listId}}\",\n  \"product_id\": \"{{productId}}\",\n  \"offer_id\": \"{{offerId}}\",\n  \"quantity\": 2,\n  \"price_snapshot\": 89.9\n}"
+              "raw": "{\n  \"id\": \"{{listItemId}}\",\n  \"list_id\": \"{{listId}}\",\n  \"good_id\": \"{{goodId}}\",\n  \"offer_id\": \"{{offerId}}\",\n  \"quantity\": 2,\n  \"price_snapshot\": 89.9\n}"
             },
             "url": "{{baseUrl}}/list-items"
           }
@@ -298,10 +298,10 @@
       ]
     },
     {
-      "name": "Идентичности продукта",
+      "name": "Идентичности товара",
       "item": [
         {
-          "name": "POST /product-identities",
+          "name": "POST /good-identities",
           "request": {
             "method": "POST",
             "header": [
@@ -310,18 +310,18 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"product_id\": \"{{productId}}\",\n  \"external_id\": \"sku-12345\",\n  \"source\": \"erp\"\n}"
+              "raw": "{\n  \"good_id\": \"{{goodId}}\",\n  \"external_id\": \"sku-12345\",\n  \"source\": \"erp\"\n}"
             },
-            "url": "{{baseUrl}}/product-identities"
+            "url": "{{baseUrl}}/good-identities"
           }
         }
       ]
     },
     {
-      "name": "Merge продуктов (в конце сценария)",
+      "name": "Merge товаров (в конце сценария)",
       "item": [
         {
-          "name": "POST /products/merge",
+          "name": "POST /goods/merge",
           "request": {
             "method": "POST",
             "header": [
@@ -330,9 +330,9 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"source_product_id\": \"{{productId2}}\",\n  \"target_product_id\": \"{{productId}}\"\n}"
+              "raw": "{\n  \"source_good_id\": \"{{goodId2}}\",\n  \"target_good_id\": \"{{goodId}}\"\n}"
             },
-            "url": "{{baseUrl}}/products/merge"
+            "url": "{{baseUrl}}/goods/merge"
           }
         }
       ]
@@ -341,16 +341,16 @@
       "name": "Негативные примеры",
       "item": [
         {
-          "name": "GET /products без Authorization",
+          "name": "GET /goods без Authorization",
           "request": {
             "auth": { "type": "noauth" },
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/products"
+            "url": "{{baseUrl}}/goods"
           }
         },
         {
-          "name": "POST /products — лишнее поле в JSON",
+          "name": "POST /goods — лишнее поле в JSON",
           "request": {
             "method": "POST",
             "header": [
@@ -359,13 +359,13 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"id\": \"{{productId}}\",\n  \"name\": \"Тест\",\n  \"extra\": true\n}"
+              "raw": "{\n  \"id\": \"{{goodId}}\",\n  \"name\": \"Тест\",\n  \"extra\": true\n}"
             },
-            "url": "{{baseUrl}}/products"
+            "url": "{{baseUrl}}/goods"
           }
         },
         {
-          "name": "POST /products — неверный Bearer (не UUID)",
+          "name": "POST /goods — неверный Bearer (не UUID)",
           "request": {
             "method": "POST",
             "header": [
@@ -374,9 +374,9 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"id\": \"{{productId}}\",\n  \"name\": \"Тест\"\n}"
+              "raw": "{\n  \"id\": \"{{goodId}}\",\n  \"name\": \"Тест\"\n}"
             },
-            "url": "{{baseUrl}}/products"
+            "url": "{{baseUrl}}/goods"
           }
         }
       ]

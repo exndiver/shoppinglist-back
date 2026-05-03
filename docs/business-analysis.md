@@ -32,7 +32,7 @@
 
 ### Подготовка к шарингу
 
-В будущем шарится **список**, а не «все данные пользователя». Продукты остаются у владельца; список — shared-контекст (появятся cross-owner ссылки). Поэтому **уже сейчас у всех сущностей есть `owner_id`**.
+В будущем шарится **список**, а не «все данные пользователя». Товары остаются у владельца; список — shared-контекст (появятся cross-owner ссылки). Поэтому **уже сейчас у всех сущностей есть `owner_id`**.
 
 ---
 
@@ -42,7 +42,7 @@
 
 Логический владелец данных. На старте может совпадать с идентификатором устройства; позже — полноценный аккаунт.
 
-### 2.2 Product (товар)
+### 2.2 Good / товар
 
 Реальный объект покупки (молоко, хлеб и т.д.) **в разрезе одного owner**.
 
@@ -51,7 +51,7 @@
 
 **Инварианты**
 
-- Один реальный товар у пользователя → один **canonical** Product после устранения дубликатов.
+- Один реальный товар у пользователя → один **canonical** товар (запись `goods`) после устранения дубликатов.
 - Идентификатор immutable; «удаление» — через soft-delete или merge, не физический delete в доменной модели.
 
 ### 2.3 Store (магазин)
@@ -64,11 +64,11 @@
 
 ### 2.4 Offer (наличие товара в магазине)
 
-Связка **product + store** в рамках **одного owner**.
+Связка **товар + магазин** в рамках **одного owner**.
 
 **Инвариант**
 
-- Уникальность: **`(owner_id, product_id, store_id)`** (или эквивалент с каноническими id после resolve).
+- Уникальность: **`(owner_id, good_id, store_id)`** (или эквивалент с каноническими id после resolve).
 
 Цену Offer **не хранит** — только факт связи «этот товар продаётся в этом магазине».
 
@@ -128,8 +128,8 @@
 
 | Операция | Поведение |
 |----------|-----------|
-| Создание товара | Новый Product или сопоставление с существующим (identity / match) |
-| Добавление в список | Выбор product, опционально offer, фиксация **price_snapshot** |
+| Создание товара | Новая запись в каталоге или сопоставление с существующим (identity / match) |
+| Добавление в список | Выбор товара, опционально offer, фиксация **price_snapshot** |
 | Обновление цены | Новый **PriceRecord** (insert) |
 | Чтение цены | **latest** по PriceRecord для offer |
 | Merge | Доменная операция объединения в canonical **внутри owner** |
@@ -147,7 +147,7 @@
 
 ### Целостность ссылок
 
-Все связи остаются валидными после merge; входящие `product_id` / `store_id` **resolve к canonical**.
+Все связи остаются валидными после merge; входящие `good_id` / `store_id` **resolve к canonical**.
 
 ---
 
@@ -161,11 +161,11 @@
 
 ## 8. Производительность (ориентиры)
 
-Частые операции: поиск продуктов, latest цена, загрузка списка.
+Частые операции: поиск товаров, latest цена, загрузка списка.
 
 Требования к индексам (на уровне БД):
 
-- по `normalized_name` (products / stores);
+- по `normalized_name` (таблицы `goods` / `stores`);
 - по `(offer_id, recorded_at)` для истории и latest.
 
 Опционально: кеш latest price.
@@ -201,7 +201,7 @@
 ```json
 {
   "code": "NOT_FOUND",
-  "message": "Product not found"
+  "message": "Good not found"
 }
 ```
 
@@ -209,14 +209,14 @@
 
 | Область | Операции (логика) |
 |---------|-------------------|
-| Products | Upsert (`POST /products`), поиск (`GET /products?q=`), получение с resolve canonical (`GET /products/{id}`) |
-| Merge | `POST /products/merge`; кандидаты `GET /products/{id}/merge-candidates?q=` (exact / prefix / contains / others) |
+| Goods (товары) | Upsert (`POST /goods`), поиск (`GET /goods?q=`), получение с resolve canonical (`GET /goods/{id}`) |
+| Merge | `POST /goods/merge`; кандидаты `GET /goods/{id}/merge-candidates?q=` (exact / prefix / contains / others) |
 | Stores | Upsert (`POST /stores`), поиск (`GET /stores?q=`) |
-| Offers | Создание с resolve product/store и уникальностью пары (`POST /offers`); офферы по продукту (`GET /products/{id}/offers`) с latest ценой |
+| Offers | Создание с resolve good/store и уникальностью пары (`POST /offers`); офферы по товару (`GET /goods/{id}/offers`) с latest ценой |
 | Prices | Только insert (`POST /price-records`); история (`GET /offers/{id}/prices`); опционально latest (`GET /offers/{id}/price/latest`) |
 | Lists | Upsert списка (`POST /lists`), список списков (`GET /lists`), детали (`GET /lists/{id}`) |
 | List items | Добавление с snapshot (`POST /list-items`), обновление полей (`PATCH /list-items/{id}`): quantity, is_purchased, offer_id |
-| Identity | Опционально `POST /product-identities` с уникальностью `(owner, external_id, source)` |
+| Identity | Опционально `POST /good-identities` с уникальностью `(owner, external_id, source)` |
 
 ### 11.4 Явно не делать
 
@@ -231,7 +231,7 @@
 
 ```
 User (owner)
- ├── Products
+ ├── Goods (товары)
  ├── Stores
  ├── Offers
  ├── PriceRecords

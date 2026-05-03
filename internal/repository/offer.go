@@ -15,7 +15,7 @@ func scanOffer(row RowScanner) (*models.Offer, error) {
 	err := row.Scan(
 		&o.ID,
 		&o.OwnerID,
-		&o.ProductID,
+		&o.GoodID,
 		&o.StoreID,
 		&cb,
 		&o.CreatedAt,
@@ -37,15 +37,15 @@ func InsertOffer(ctx context.Context, db DBTX, o models.Offer) error {
 		cb = *o.CreatedBy
 	}
 	_, err := db.Exec(ctx, `
-		INSERT INTO offers (id, owner_id, product_id, store_id, created_by)
+		INSERT INTO offers (id, owner_id, good_id, store_id, created_by)
 		VALUES ($1, $2, $3, $4, $5)
-	`, o.ID, o.OwnerID, o.ProductID, o.StoreID, cb)
+	`, o.ID, o.OwnerID, o.GoodID, o.StoreID, cb)
 	return err
 }
 
 func GetOffer(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.Offer, error) {
 	row := db.QueryRow(ctx, `
-		SELECT id, owner_id, product_id, store_id, created_by, created_at, updated_at
+		SELECT id, owner_id, good_id, store_id, created_by, created_at, updated_at
 		FROM offers WHERE owner_id = $1 AND id = $2
 	`, ownerID, id)
 	o, err := scanOffer(row)
@@ -55,11 +55,11 @@ func GetOffer(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.Offe
 	return o, err
 }
 
-func FindOfferByTriple(ctx context.Context, db DBTX, ownerID, productID, storeID uuid.UUID) (*models.Offer, error) {
+func FindOfferByTriple(ctx context.Context, db DBTX, ownerID, goodID, storeID uuid.UUID) (*models.Offer, error) {
 	row := db.QueryRow(ctx, `
-		SELECT id, owner_id, product_id, store_id, created_by, created_at, updated_at
-		FROM offers WHERE owner_id = $1 AND product_id = $2 AND store_id = $3
-	`, ownerID, productID, storeID)
+		SELECT id, owner_id, good_id, store_id, created_by, created_at, updated_at
+		FROM offers WHERE owner_id = $1 AND good_id = $2 AND store_id = $3
+	`, ownerID, goodID, storeID)
 	o, err := scanOffer(row)
 	if err == pgx.ErrNoRows {
 		return nil, ErrNotFound
@@ -67,11 +67,11 @@ func FindOfferByTriple(ctx context.Context, db DBTX, ownerID, productID, storeID
 	return o, err
 }
 
-func UpdateOfferProductID(ctx context.Context, db DBTX, ownerID, offerID, newProductID uuid.UUID) error {
+func UpdateOfferGoodID(ctx context.Context, db DBTX, ownerID, offerID, newGoodID uuid.UUID) error {
 	tag, err := db.Exec(ctx, `
-		UPDATE offers SET product_id = $3, updated_at = now()
+		UPDATE offers SET good_id = $3, updated_at = now()
 		WHERE owner_id = $1 AND id = $2
-	`, ownerID, offerID, newProductID)
+	`, ownerID, offerID, newGoodID)
 	if err != nil {
 		return err
 	}
@@ -99,12 +99,12 @@ func RepointPriceRecords(ctx context.Context, db DBTX, fromOfferID, toOfferID uu
 	return err
 }
 
-func ListOffersForProduct(ctx context.Context, db DBTX, ownerID, productID uuid.UUID) ([]models.Offer, error) {
+func ListOffersForGood(ctx context.Context, db DBTX, ownerID, goodID uuid.UUID) ([]models.Offer, error) {
 	rows, err := db.Query(ctx, `
-		SELECT id, owner_id, product_id, store_id, created_by, created_at, updated_at
+		SELECT id, owner_id, good_id, store_id, created_by, created_at, updated_at
 		FROM offers
-		WHERE owner_id = $1 AND product_id = $2
-	`, ownerID, productID)
+		WHERE owner_id = $1 AND good_id = $2
+	`, ownerID, goodID)
 	if err != nil {
 		return nil, err
 	}

@@ -9,65 +9,65 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func scanProduct(row RowScanner) (*models.Product, error) {
-	var p models.Product
+func scanGood(row RowScanner) (*models.Good, error) {
+	var g models.Good
 	var merged pgtype.UUID
 	var cb pgtype.Text
 	err := row.Scan(
-		&p.ID,
-		&p.OwnerID,
-		&p.Name,
-		&p.NormalizedName,
+		&g.ID,
+		&g.OwnerID,
+		&g.Name,
+		&g.NormalizedName,
 		&merged,
 		&cb,
-		&p.CreatedAt,
-		&p.UpdatedAt,
+		&g.CreatedAt,
+		&g.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
 	if merged.Valid {
 		u := uuid.UUID(merged.Bytes)
-		p.MergedInto = &u
+		g.MergedInto = &u
 	}
 	if cb.Valid {
 		s := cb.String
-		p.CreatedBy = &s
+		g.CreatedBy = &s
 	}
-	return &p, nil
+	return &g, nil
 }
 
-func GetProduct(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.Product, error) {
+func GetGood(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.Good, error) {
 	row := db.QueryRow(ctx, `
 		SELECT id, owner_id, name, normalized_name, merged_into, created_by, created_at, updated_at
-		FROM products WHERE owner_id = $1 AND id = $2
+		FROM goods WHERE owner_id = $1 AND id = $2
 	`, ownerID, id)
-	p, err := scanProduct(row)
+	g, err := scanGood(row)
 	if err == pgx.ErrNoRows {
 		return nil, ErrNotFound
 	}
-	return p, err
+	return g, err
 }
 
-func InsertProduct(ctx context.Context, db DBTX, p models.Product) error {
+func InsertGood(ctx context.Context, db DBTX, g models.Good) error {
 	var cb any
-	if p.CreatedBy != nil {
-		cb = *p.CreatedBy
+	if g.CreatedBy != nil {
+		cb = *g.CreatedBy
 	}
 	_, err := db.Exec(ctx, `
-		INSERT INTO products (id, owner_id, name, normalized_name, merged_into, created_by)
+		INSERT INTO goods (id, owner_id, name, normalized_name, merged_into, created_by)
 		VALUES ($1, $2, $3, $4, NULL, $5)
-	`, p.ID, p.OwnerID, p.Name, p.NormalizedName, cb)
+	`, g.ID, g.OwnerID, g.Name, g.NormalizedName, cb)
 	return err
 }
 
-func UpdateProductCanonical(ctx context.Context, db DBTX, ownerID, canonicalID uuid.UUID, name, normalized string, createdBy *string) error {
+func UpdateGoodCanonical(ctx context.Context, db DBTX, ownerID, canonicalID uuid.UUID, name, normalized string, createdBy *string) error {
 	var cb any
 	if createdBy != nil {
 		cb = *createdBy
 	}
 	tag, err := db.Exec(ctx, `
-		UPDATE products
+		UPDATE goods
 		SET name = $3,
 		    normalized_name = $4,
 		    updated_at = now(),
@@ -83,9 +83,9 @@ func UpdateProductCanonical(ctx context.Context, db DBTX, ownerID, canonicalID u
 	return nil
 }
 
-func MarkProductMerged(ctx context.Context, db DBTX, ownerID, sourceCanonicalID, targetCanonicalID uuid.UUID) error {
+func MarkGoodMerged(ctx context.Context, db DBTX, ownerID, sourceCanonicalID, targetCanonicalID uuid.UUID) error {
 	tag, err := db.Exec(ctx, `
-		UPDATE products
+		UPDATE goods
 		SET merged_into = $3,
 		    updated_at = now()
 		WHERE owner_id = $1 AND id = $2 AND merged_into IS NULL AND id <> $3
@@ -99,21 +99,21 @@ func MarkProductMerged(ctx context.Context, db DBTX, ownerID, sourceCanonicalID,
 	return nil
 }
 
-func RepointListItemsProduct(ctx context.Context, db DBTX, ownerID, fromProductID, toProductID uuid.UUID) error {
+func RepointListItemsGood(ctx context.Context, db DBTX, ownerID, fromGoodID, toGoodID uuid.UUID) error {
 	_, err := db.Exec(ctx, `
-		UPDATE list_items SET product_id = $3, updated_at = now()
-		WHERE owner_id = $1 AND product_id = $2
-	`, ownerID, fromProductID, toProductID)
+		UPDATE list_items SET good_id = $3, updated_at = now()
+		WHERE owner_id = $1 AND good_id = $2
+	`, ownerID, fromGoodID, toGoodID)
 	return err
 }
 
-func SearchCanonicalProducts(ctx context.Context, db DBTX, ownerID uuid.UUID, normalizedContains string, limit int) ([]models.Product, error) {
+func SearchCanonicalGoods(ctx context.Context, db DBTX, ownerID uuid.UUID, normalizedContains string, limit int) ([]models.Good, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
 	rows, err := db.Query(ctx, `
 		SELECT id, owner_id, name, normalized_name, merged_into, created_by, created_at, updated_at
-		FROM products
+		FROM goods
 		WHERE owner_id = $1
 		  AND merged_into IS NULL
 		  AND ($2 = '' OR normalized_name LIKE '%' || $2 || '%')
@@ -125,24 +125,24 @@ func SearchCanonicalProducts(ctx context.Context, db DBTX, ownerID uuid.UUID, no
 	}
 	defer rows.Close()
 
-	var out []models.Product
+	var out []models.Good
 	for rows.Next() {
-		p, err := scanProduct(rows)
+		g, err := scanGood(rows)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, *p)
+		out = append(out, *g)
 	}
 	return out, rows.Err()
 }
 
-func ListCanonicalProductsExclude(ctx context.Context, db DBTX, ownerID uuid.UUID, exclude uuid.UUID, limit int) ([]models.Product, error) {
+func ListCanonicalGoodsExclude(ctx context.Context, db DBTX, ownerID uuid.UUID, exclude uuid.UUID, limit int) ([]models.Good, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 50
 	}
 	rows, err := db.Query(ctx, `
 		SELECT id, owner_id, name, normalized_name, merged_into, created_by, created_at, updated_at
-		FROM products
+		FROM goods
 		WHERE owner_id = $1
 		  AND merged_into IS NULL
 		  AND id <> $2
@@ -154,13 +154,13 @@ func ListCanonicalProductsExclude(ctx context.Context, db DBTX, ownerID uuid.UUI
 	}
 	defer rows.Close()
 
-	var out []models.Product
+	var out []models.Good
 	for rows.Next() {
-		p, err := scanProduct(rows)
+		g, err := scanGood(rows)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, *p)
+		out = append(out, *g)
 	}
 	return out, rows.Err()
 }

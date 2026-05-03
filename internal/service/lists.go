@@ -13,7 +13,7 @@ import (
 
 type ListItemDetail struct {
 	models.ListItem
-	ProductName string `json:"product_name"`
+	GoodName string `json:"good_name"`
 }
 
 type ListDetail struct {
@@ -70,24 +70,24 @@ func (s *Service) GetListDetail(ctx context.Context, ownerID, listID uuid.UUID) 
 
 	outItems := make([]ListItemDetail, 0, len(items))
 	for _, it := range items {
-		pc, err := repository.ResolveProductCanonical(ctx, s.Pool, ownerID, it.ProductID)
+		gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, it.GoodID)
 		if err != nil {
 			return nil, err
 		}
-		p, err := repository.GetProduct(ctx, s.Pool, ownerID, pc)
+		g, err := repository.GetGood(ctx, s.Pool, ownerID, gc)
 		if err != nil {
 			return nil, err
 		}
 		outItems = append(outItems, ListItemDetail{
-			ListItem:    it,
-			ProductName: p.Name,
+			ListItem: it,
+			GoodName: g.Name,
 		})
 	}
 
 	return &ListDetail{List: *l, Items: outItems}, nil
 }
 
-func (s *Service) AddListItem(ctx context.Context, ownerID uuid.UUID, id, listID, productID uuid.UUID, offerID *uuid.UUID, quantity float64, priceSnapshot *float64, createdBy *string) (*ListItemDetail, error) {
+func (s *Service) AddListItem(ctx context.Context, ownerID uuid.UUID, id, listID, goodID uuid.UUID, offerID *uuid.UUID, quantity float64, priceSnapshot *float64, createdBy *string) (*ListItemDetail, error) {
 	if quantity <= 0 {
 		quantity = 1
 	}
@@ -96,7 +96,7 @@ func (s *Service) AddListItem(ctx context.Context, ownerID uuid.UUID, id, listID
 		return nil, err
 	}
 
-	pc, err := repository.ResolveProductCanonical(ctx, s.Pool, ownerID, productID)
+	gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, goodID)
 	if err != nil {
 		return nil, err
 	}
@@ -107,11 +107,11 @@ func (s *Service) AddListItem(ctx context.Context, ownerID uuid.UUID, id, listID
 		if err != nil {
 			return nil, err
 		}
-		op, err := repository.ResolveProductCanonical(ctx, s.Pool, ownerID, off.ProductID)
+		og, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, off.GoodID)
 		if err != nil {
 			return nil, err
 		}
-		if op != pc {
+		if og != gc {
 			return nil, ErrBadRequest
 		}
 		resolvedOffer = offerID
@@ -121,7 +121,7 @@ func (s *Service) AddListItem(ctx context.Context, ownerID uuid.UUID, id, listID
 		ID:            id,
 		OwnerID:       ownerID,
 		ListID:        listID,
-		ProductID:     pc,
+		GoodID:        gc,
 		OfferID:       resolvedOffer,
 		Quantity:      quantity,
 		PriceSnapshot: priceSnapshot,
@@ -140,11 +140,11 @@ func (s *Service) AddListItem(ctx context.Context, ownerID uuid.UUID, id, listID
 	if err != nil {
 		return nil, err
 	}
-	p, err := repository.GetProduct(ctx, s.Pool, ownerID, pc)
+	g, err := repository.GetGood(ctx, s.Pool, ownerID, gc)
 	if err != nil {
 		return nil, err
 	}
-	return &ListItemDetail{ListItem: *got, ProductName: p.Name}, nil
+	return &ListItemDetail{ListItem: *got, GoodName: g.Name}, nil
 }
 
 func (s *Service) PatchListItem(ctx context.Context, ownerID, itemID uuid.UUID, patch repository.ListItemPatch) error {
@@ -153,7 +153,7 @@ func (s *Service) PatchListItem(ctx context.Context, ownerID, itemID uuid.UUID, 
 		return err
 	}
 
-	pc, err := repository.ResolveProductCanonical(ctx, s.Pool, ownerID, it.ProductID)
+	gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, it.GoodID)
 	if err != nil {
 		return err
 	}
@@ -166,11 +166,11 @@ func (s *Service) PatchListItem(ctx context.Context, ownerID, itemID uuid.UUID, 
 			if err != nil {
 				return err
 			}
-			op, err := repository.ResolveProductCanonical(ctx, s.Pool, ownerID, off.ProductID)
+			og, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, off.GoodID)
 			if err != nil {
 				return err
 			}
-			if op != pc {
+			if og != gc {
 				return ErrBadRequest
 			}
 		}
@@ -184,13 +184,13 @@ func (s *Service) GetListItemDetail(ctx context.Context, ownerID, itemID uuid.UU
 	if err != nil {
 		return nil, err
 	}
-	pc, err := repository.ResolveProductCanonical(ctx, s.Pool, ownerID, it.ProductID)
+	gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, it.GoodID)
 	if err != nil {
 		return nil, err
 	}
-	p, err := repository.GetProduct(ctx, s.Pool, ownerID, pc)
+	g, err := repository.GetGood(ctx, s.Pool, ownerID, gc)
 	if err != nil {
 		return nil, err
 	}
-	return &ListItemDetail{ListItem: *it, ProductName: p.Name}, nil
+	return &ListItemDetail{ListItem: *it, GoodName: g.Name}, nil
 }

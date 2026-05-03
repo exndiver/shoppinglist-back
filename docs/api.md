@@ -62,11 +62,11 @@ Authorization: Bearer <owner_uuid>
 
 ---
 
-## Продукты
+## Товары
 
-### `POST /products`
+### `POST /goods`
 
-Создание или обновление продукта по `id` (upsert).
+Создание или обновление товара по `id` (upsert).
 
 **Тело:**
 
@@ -75,13 +75,13 @@ Authorization: Bearer <owner_uuid>
 | `id` | UUID | да |
 | `name` | string | да |
 
-**Ответ `200`:** объект продукта (см. ниже).
+**Ответ `200`:** объект товара (см. ниже).
 
 ---
 
-### `GET /products?q=...`
+### `GET /goods?q=...`
 
-Поиск продуктов владельца. `q` — опциональная строка поиска.
+Поиск товаров владельца. `q` — опциональная строка поиска.
 
 **Ответ `200`:** массив сниппетов:
 
@@ -91,11 +91,11 @@ Authorization: Bearer <owner_uuid>
 
 ---
 
-### `GET /products/{id}`
+### `GET /goods/{id}`
 
-Канонический продукт по `id`.
+Канонический товар по `id`.
 
-**Ответ `200`:** объект продукта:
+**Ответ `200`:** объект товара:
 
 | Поле | Тип |
 |------|-----|
@@ -109,24 +109,24 @@ Authorization: Bearer <owner_uuid>
 
 ---
 
-### `POST /products/merge`
+### `POST /goods/merge`
 
-Объединение двух продуктов.
+Объединение двух товаров.
 
 **Тело:**
 
 | Поле | Тип |
 |------|-----|
-| `source_product_id` | UUID |
-| `target_product_id` | UUID |
+| `source_good_id` | UUID |
+| `target_good_id` | UUID |
 
 **Ответ `204 No Content`** при успехе.
 
 ---
 
-### `GET /products/{id}/merge-candidates?q=...`
+### `GET /goods/{id}/merge-candidates?q=...`
 
-Кандидаты на слияние с продуктом `{id}`. Параметр `q` опционален.
+Кандидаты на слияние с товаром `{id}`. Параметр `q` опционален.
 
 **Ответ `200`:**
 
@@ -141,9 +141,9 @@ Authorization: Bearer <owner_uuid>
 
 ---
 
-### `GET /products/{id}/offers`
+### `GET /goods/{id}/offers`
 
-Предложения (офферы) по продукту с последней известной ценой по каждому офферу.
+Предложения (офферы) по товару с последней известной ценой по каждому офферу.
 
 **Ответ `200`:** массив:
 
@@ -173,7 +173,7 @@ Upsert магазина.
 
 **Тело:** `id` (UUID), `name` (string).
 
-**Ответ `200`:** как у продукта — `id`, `owner_id`, `name`, `normalized_name`, `merged_into`, `created_at`, `updated_at`.
+**Ответ `200`:** как у товара — `id`, `owner_id`, `name`, `normalized_name`, `merged_into`, `created_at`, `updated_at`.
 
 ---
 
@@ -189,17 +189,17 @@ Upsert магазина.
 
 ### `POST /offers`
 
-Создание оффера «продукт в магазине».
+Создание оффера «товар в магазине».
 
 **Тело:**
 
 | Поле | Тип |
 |------|-----|
 | `id` | UUID |
-| `product_id` | UUID |
+| `good_id` | UUID |
 | `store_id` | UUID |
 
-**Ответ `200`:** `id`, `owner_id`, `product_id`, `store_id`, `created_at`, `updated_at`.
+**Ответ `200`:** `id`, `owner_id`, `good_id`, `store_id`, `created_at`, `updated_at`.
 
 ---
 
@@ -292,11 +292,11 @@ Upsert списка.
       "id": "…",
       "owner_id": "…",
       "list_id": "…",
-      "product_id": "…",
+      "good_id": "…",
       "offer_id": "…",
       "quantity": 2,
       "is_purchased": false,
-      "product_name": "Молоко",
+      "good_name": "Молоко",
       "price_snapshot": 89.9,
       "created_at": "…",
       "updated_at": "…"
@@ -319,12 +319,12 @@ Upsert списка.
 |------|-----|-------------|
 | `id` | UUID | да |
 | `list_id` | UUID | да |
-| `product_id` | UUID | да |
+| `good_id` | UUID | да |
 | `offer_id` | UUID | нет |
 | `quantity` | number | да |
 | `price_snapshot` | number | нет |
 
-**Ответ `200`:** объект позиции (включая `product_name` после обогащения).
+**Ответ `200`:** объект позиции (включая `good_name` после обогащения).
 
 ---
 
@@ -342,17 +342,17 @@ Upsert списка.
 
 ---
 
-## Внешние идентификаторы продукта
+## Внешние идентификаторы товара
 
-### `POST /product-identities`
+### `POST /good-identities`
 
-Привязка внешнего идентификатора к продукту (например, ID из внешней системы).
+Привязка внешнего идентификатора к товару (например, ID из внешней системы).
 
 **Тело:**
 
 | Поле | Тип |
 |------|-----|
-| `product_id` | UUID |
+| `good_id` | UUID |
 | `external_id` | string (не пустая после trim) |
 | `source` | string (не пустая после trim) |
 
@@ -380,15 +380,15 @@ curl -s http://localhost:8080/health
 ```bash
 OWNER="00000000-0000-0000-0000-000000000001"
 
-curl -sS http://localhost:8080/products \
+curl -sS http://localhost:8080/goods \
   -H "Authorization: Bearer $OWNER" \
   -H "Content-Type: application/json"
 ```
 
-Создание продукта:
+Создание товара:
 
 ```bash
-curl -sS http://localhost:8080/products \
+curl -sS http://localhost:8080/goods \
   -H "Authorization: Bearer $OWNER" \
   -H "Content-Type: application/json" \
   -H "X-Device-Id: my-phone" \
