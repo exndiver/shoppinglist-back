@@ -4,7 +4,7 @@
 
 ## Что уже есть
 
-- HTTP API каркас (пока только `GET /health`)
+- HTTP API: `GET /health` и доменные маршруты (см. [документация API](docs/api.md))
 - Конфиг из переменных окружения (`.env`)
 - Подключение к Postgres (pool)
 - Миграции через `golang-migrate`
