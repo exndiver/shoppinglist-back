@@ -1,0 +1,385 @@
+{
+  "info": {
+    "name": "Shopping List Backend",
+    "description": "Тесты HTTP API (см. docs/api.md).\n\n**Переменные** (Edit collection → Variables): `baseUrl`, `ownerId`, фиксированные UUID сущностей — при повторном прогоне меняй UUID или чисти БД.\n\n**Collection Runner:** выбери коллекцию → Run — папки идут в порядке сценария: Health → создание продуктов → магазины → офферы/цены → чтение продуктов → списки → идентичности → merge → негативные тесты.\n\nЛишние поля в JSON → 400 (`DisallowUnknownFields`).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "ownerId", "value": "11111111-1111-1111-1111-111111111111" },
+    { "key": "productId", "value": "22222222-2222-2222-2222-222222222222" },
+    { "key": "productId2", "value": "33333333-3333-3333-3333-333333333333" },
+    { "key": "storeId", "value": "44444444-4444-4444-4444-444444444444" },
+    { "key": "offerId", "value": "55555555-5555-5555-5555-555555555555" },
+    { "key": "priceRecordId", "value": "66666666-6666-6666-6666-666666666666" },
+    { "key": "priceRecordId2", "value": "66666666-6666-6666-6666-666666666667" },
+    { "key": "listId", "value": "77777777-7777-7777-7777-777777777777" },
+    { "key": "listItemId", "value": "88888888-8888-8888-8888-888888888888" }
+  ],
+  "item": [
+    {
+      "name": "Health (без авторизации)",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Продукты — создание",
+      "item": [
+        {
+          "name": "POST /products — upsert A",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" },
+              { "key": "X-Device-Id", "value": "postman", "type": "text", "disabled": true }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{productId}}\",\n  \"name\": \"Молоко 3.2%\"\n}"
+            },
+            "url": "{{baseUrl}}/products"
+          }
+        },
+        {
+          "name": "POST /products — upsert B",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{productId2}}\",\n  \"name\": \"Кефир\"\n}"
+            },
+            "url": "{{baseUrl}}/products"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Магазины",
+      "item": [
+        {
+          "name": "POST /stores — upsert",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{storeId}}\",\n  \"name\": \"Пятёрочка у дома\"\n}"
+            },
+            "url": "{{baseUrl}}/stores"
+          }
+        },
+        {
+          "name": "GET /stores?q=пят",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
+            ],
+            "url": "{{baseUrl}}/stores?q=пят"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Продукты — чтение",
+      "item": [
+        {
+          "name": "GET /products?q=мол",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
+            ],
+            "url": "{{baseUrl}}/products?q=мол"
+          }
+        },
+        {
+          "name": "GET /products/{id}",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
+            ],
+            "url": "{{baseUrl}}/products/{{productId}}"
+          }
+        },
+        {
+          "name": "GET /products/{id}/merge-candidates",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
+            ],
+            "url": "{{baseUrl}}/products/{{productId}}/merge-candidates?q=кеф"
+          }
+        },
+        {
+          "name": "GET /products/{id}/offers",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
+            ],
+            "url": "{{baseUrl}}/products/{{productId}}/offers"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Офферы и цены",
+      "item": [
+        {
+          "name": "POST /offers",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{offerId}}\",\n  \"product_id\": \"{{productId}}\",\n  \"store_id\": \"{{storeId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/offers"
+          }
+        },
+        {
+          "name": "POST /price-records",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{priceRecordId}}\",\n  \"offer_id\": \"{{offerId}}\",\n  \"price\": 89.9,\n  \"pack_size\": 1,\n  \"unit\": \"pcs\",\n  \"recorded_at\": \"2026-05-03T12:00:00Z\"\n}"
+            },
+            "url": "{{baseUrl}}/price-records"
+          }
+        },
+        {
+          "name": "POST /price-records (recorded_at по умолчанию)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{priceRecordId2}}\",\n  \"offer_id\": \"{{offerId}}\",\n  \"price\": 79.9\n}"
+            },
+            "url": "{{baseUrl}}/price-records"
+          }
+        },
+        {
+          "name": "GET /offers/{id}/prices",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
+            ],
+            "url": "{{baseUrl}}/offers/{{offerId}}/prices"
+          }
+        },
+        {
+          "name": "GET /offers/{id}/price/latest",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
+            ],
+            "url": "{{baseUrl}}/offers/{{offerId}}/price/latest"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Списки и позиции",
+      "item": [
+        {
+          "name": "POST /lists — upsert",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{listId}}\",\n  \"name\": \"На выходные\"\n}"
+            },
+            "url": "{{baseUrl}}/lists"
+          }
+        },
+        {
+          "name": "GET /lists",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
+            ],
+            "url": "{{baseUrl}}/lists"
+          }
+        },
+        {
+          "name": "GET /lists/{id}",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
+            ],
+            "url": "{{baseUrl}}/lists/{{listId}}"
+          }
+        },
+        {
+          "name": "POST /list-items",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{listItemId}}\",\n  \"list_id\": \"{{listId}}\",\n  \"product_id\": \"{{productId}}\",\n  \"offer_id\": \"{{offerId}}\",\n  \"quantity\": 2,\n  \"price_snapshot\": 89.9\n}"
+            },
+            "url": "{{baseUrl}}/list-items"
+          }
+        },
+        {
+          "name": "PATCH /list-items/{id} — quantity + is_purchased",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 3,\n  \"is_purchased\": true\n}"
+            },
+            "url": "{{baseUrl}}/list-items/{{listItemId}}"
+          }
+        },
+        {
+          "name": "PATCH /list-items/{id} — снять offer_id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"offer_id\": null\n}"
+            },
+            "url": "{{baseUrl}}/list-items/{{listItemId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Идентичности продукта",
+      "item": [
+        {
+          "name": "POST /product-identities",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"product_id\": \"{{productId}}\",\n  \"external_id\": \"sku-12345\",\n  \"source\": \"erp\"\n}"
+            },
+            "url": "{{baseUrl}}/product-identities"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Merge продуктов (в конце сценария)",
+      "item": [
+        {
+          "name": "POST /products/merge",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source_product_id\": \"{{productId2}}\",\n  \"target_product_id\": \"{{productId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/products/merge"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Негативные примеры",
+      "item": [
+        {
+          "name": "GET /products без Authorization",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/products"
+          }
+        },
+        {
+          "name": "POST /products — лишнее поле в JSON",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{productId}}\",\n  \"name\": \"Тест\",\n  \"extra\": true\n}"
+            },
+            "url": "{{baseUrl}}/products"
+          }
+        },
+        {
+          "name": "POST /products — неверный Bearer (не UUID)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer not-a-uuid", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{productId}}\",\n  \"name\": \"Тест\"\n}"
+            },
+            "url": "{{baseUrl}}/products"
+          }
+        }
+      ]
+    }
+  ]
+}

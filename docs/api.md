@@ -360,6 +360,13 @@ Upsert списка.
 
 ---
 
+## Postman
+
+Импорт: **Import** → файл [`docs/postman/shoppinglist-back.postman_collection.json`](postman/shoppinglist-back.postman_collection.json).  
+В коллекции заданы переменные (`baseUrl`, `ownerId`, UUID сущностей). Запуск всего сценария: **Run collection** (порядок папок рассчитан на happy path, merge — перед негативными тестами).
+
+---
+
 ## Пример `curl`
 
 Проверка здоровья:
