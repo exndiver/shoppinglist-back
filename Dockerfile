@@ -19,6 +19,7 @@ FROM scratch
 WORKDIR /app
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /app/app /app/app
+COPY --from=builder /app/migrations /app/migrations
 EXPOSE 8080
 ENTRYPOINT ["/app/app"]
 
