@@ -1,0 +1,11 @@
+.env
+
+docker-compose.yml
+docker-compose.*.yml
+
+bin/
+/server
+dist/
+tmp/
+*.log
+

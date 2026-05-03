@@ -1,0 +1,7 @@
+DROP TABLE IF EXISTS product_identities;
+DROP TABLE IF EXISTS list_items;
+DROP TABLE IF EXISTS shopping_lists;
+DROP TABLE IF EXISTS price_records;
+DROP TABLE IF EXISTS offers;
+DROP TABLE IF EXISTS stores;
+DROP TABLE IF EXISTS products;

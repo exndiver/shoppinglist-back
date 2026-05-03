@@ -1,0 +1,11 @@
+.git
+.github
+.idea
+.vscode
+
+**/*.log
+logs
+
+Dockerfile
+docker-compose*.yml
+
