@@ -24,6 +24,14 @@ type Config struct {
 	MigrationsPath string `envconfig:"MIGRATIONS_PATH" default:"file://migrations"`
 
 	ShutdownTimeout time.Duration `envconfig:"SHUTDOWN_TIMEOUT" default:"10s"`
+
+	// Logging: JSON в файл по умолчанию logs/logs.log (от корня рабочей директории процесса).
+	LogLevel   string `envconfig:"LOG_LEVEL" default:"info"`  // debug, info, warn, error
+	LogFormat  string `envconfig:"LOG_FORMAT" default:"json"` // json | text
+	LogService string `envconfig:"LOG_SERVICE" default:"shopping-backend"`
+	LogFile    string `envconfig:"LOG_FILE" default:"logs/logs.log"`
+	// LogSlowRequest: requests slower than this get level warn (0 disables).
+	LogSlowRequest time.Duration `envconfig:"LOG_SLOW_REQUEST" default:"1s"`
 }
 
 func Load() Config {

@@ -296,10 +296,10 @@ func (a *API) postOffer(w http.ResponseWriter, r *http.Request) {
 
 func offerRespFrom(o models.Offer) map[string]any {
 	return map[string]any{
-		"id":        o.ID,
-		"owner_id":  o.OwnerID,
-		"good_id":   o.GoodID,
-		"store_id":  o.StoreID,
+		"id":         o.ID,
+		"owner_id":   o.OwnerID,
+		"good_id":    o.GoodID,
+		"store_id":   o.StoreID,
 		"created_at": o.CreatedAt,
 		"updated_at": o.UpdatedAt,
 	}

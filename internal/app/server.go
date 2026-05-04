@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -30,9 +30,15 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) *Server {
 	api := handlers.NewAPI(svc)
 	mux.Handle("/", middleware.BearerOwner(api))
 
+	slow := cfg.LogSlowRequest
+	var h http.Handler = mux
+	h = middleware.AccessLog(slow, h)
+	h = middleware.Recover(h)
+	h = middleware.RequestID(h)
+
 	s := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           mux,
+		Handler:           h,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -44,7 +50,7 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) *Server {
 }
 
 func (s *Server) Start() error {
-	log.Printf("listening on %s", s.http.Addr)
+	slog.Info("http.server.listen", slog.String("addr", s.http.Addr))
 
 	err := s.http.ListenAndServe()
 	if err == nil || err == http.ErrServerClosed {

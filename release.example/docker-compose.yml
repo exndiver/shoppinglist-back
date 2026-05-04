@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: shopping-postgres-prod
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ${PGDATA_HOST_PATH:-./data/postgres}:/var/lib/postgresql/data
+    networks:
+      - shopping_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
+
+  app:
+    image: ${APP_IMAGE}
+    container_name: shopping-backend-prod
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${SHOPPING_BIND:-127.0.0.1}:${SHOPPING_HOST_PORT:-38080}:8080"
+    environment:
+      PORT: "8080"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+      DB_SSLMODE: disable
+      MIGRATIONS_PATH: file:///app/migrations
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-10s}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_SERVICE: ${LOG_SERVICE:-shopping-backend}
+      LOG_FILE: /app/logs/logs.log
+      LOG_SLOW_REQUEST: ${LOG_SLOW_REQUEST:-1s}
+      APP_VERSION: ${APP_VERSION:-}
+    volumes:
+      - ${LOGS_HOST_PATH:-./data/logs}:/app/logs
+    networks:
+      - shopping_internal
+
+networks:
+  shopping_internal:
+    driver: bridge

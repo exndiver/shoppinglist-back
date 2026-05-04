@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -23,6 +24,7 @@ func (h *HealthHandler) Get(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	if err := h.db.Ping(pingCtx); err != nil {
+		slog.WarnContext(ctx, "health.db_unavailable", slog.Any("error", err))
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte("db: unavailable\n"))
 		return

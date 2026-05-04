@@ -31,6 +31,7 @@ func BearerOwner(next http.Handler) http.Handler {
 			httpx.WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid bearer token (expected UUID)")
 			return
 		}
+		attachOwnerID(r.Context(), ownerID)
 		ctx := context.WithValue(r.Context(), contextkey.OwnerID, ownerID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
