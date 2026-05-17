@@ -14,7 +14,8 @@
     { "key": "priceRecordId", "value": "66666666-6666-6666-6666-666666666666" },
     { "key": "priceRecordId2", "value": "66666666-6666-6666-6666-666666666667" },
     { "key": "listId", "value": "77777777-7777-7777-7777-777777777777" },
-    { "key": "listItemId", "value": "88888888-8888-8888-8888-888888888888" }
+    { "key": "listItemId", "value": "88888888-8888-8888-8888-888888888888" },
+    { "key": "categoryId", "value": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" }
   ],
   "item": [
     {
@@ -27,6 +28,46 @@
             "method": "GET",
             "header": [],
             "url": "{{baseUrl}}/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Категории",
+      "item": [
+        {
+          "name": "POST /categories — upsert",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{categoryId}}\",\n  \"name\": \"Groceries\"\n}"
+            },
+            "url": "{{baseUrl}}/categories"
+          }
+        },
+        {
+          "name": "GET /categories?q=groc",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
+            ],
+            "url": "{{baseUrl}}/categories?q=groc"
+          }
+        },
+        {
+          "name": "GET /categories?updated_since",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
+            ],
+            "url": "{{baseUrl}}/categories?updated_since=1970-01-01T00:00:00Z"
           }
         }
       ]
@@ -45,7 +86,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"id\": \"{{goodId}}\",\n  \"name\": \"Молоко 3.2%\"\n}"
+              "raw": "{\n  \"id\": \"{{goodId}}\",\n  \"name\": \"Молоко 3.2%\",\n  \"category_id\": \"{{categoryId}}\"\n}"
             },
             "url": "{{baseUrl}}/goods"
           }
@@ -128,6 +169,16 @@
               { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
             ],
             "url": "{{baseUrl}}/goods/{{goodId}}/merge-candidates?q=кеф"
+          }
+        },
+        {
+          "name": "GET /goods/{id}/identities",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
+            ],
+            "url": "{{baseUrl}}/goods/{{goodId}}/identities"
           }
         },
         {
@@ -301,6 +352,16 @@
       "name": "Идентичности товара",
       "item": [
         {
+          "name": "GET /goods/{id}/identities (после POST)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
+            ],
+            "url": "{{baseUrl}}/goods/{{goodId}}/identities"
+          }
+        },
+        {
           "name": "POST /good-identities",
           "request": {
             "method": "POST",
@@ -313,6 +374,31 @@
               "raw": "{\n  \"good_id\": \"{{goodId}}\",\n  \"external_id\": \"sku-12345\",\n  \"source\": \"erp\"\n}"
             },
             "url": "{{baseUrl}}/good-identities"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sync (incremental)",
+      "item": [
+        {
+          "name": "POST /sync/batch?since",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
+            ],
+            "url": "{{baseUrl}}/sync/batch?since=1970-01-01T00:00:00Z"
+          }
+        },
+        {
+          "name": "GET /price-records?since",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerId}}", "type": "text" }
+            ],
+            "url": "{{baseUrl}}/price-records?since=1970-01-01T00:00:00Z"
           }
         }
       ]

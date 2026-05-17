@@ -23,18 +23,25 @@ func NewAPI(svc *service.Service) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /goods", a.postUpsertGood)
-	mux.HandleFunc("GET /goods", a.getGoodsSearch)
+	mux.HandleFunc("GET /goods", a.getGoods)
 	mux.HandleFunc("POST /goods/merge", a.postMergeGoods)
 	mux.HandleFunc("GET /goods/{id}/merge-candidates", a.getMergeCandidates)
 	mux.HandleFunc("GET /goods/{id}/offers", a.getGoodOffers)
+	mux.HandleFunc("GET /goods/{id}/identities", a.getGoodIdentities)
 	mux.HandleFunc("GET /goods/{id}", a.getGood)
 
 	mux.HandleFunc("POST /stores", a.postUpsertStore)
-	mux.HandleFunc("GET /stores", a.getStoresSearch)
+	mux.HandleFunc("GET /stores", a.getStores)
 
 	mux.HandleFunc("POST /offers", a.postOffer)
+	mux.HandleFunc("GET /offers", a.getOffers)
+
+	mux.HandleFunc("POST /categories", a.postCategory)
+	mux.HandleFunc("GET /categories", a.getCategories)
+	mux.HandleFunc("GET /categories/{id}", a.getCategory)
 
 	mux.HandleFunc("POST /price-records", a.postPriceRecord)
+	mux.HandleFunc("GET /price-records", a.getPriceRecords)
 	mux.HandleFunc("GET /offers/{id}/prices", a.getOfferPrices)
 	mux.HandleFunc("GET /offers/{id}/price/latest", a.getOfferLatestPrice)
 
@@ -44,8 +51,11 @@ func NewAPI(svc *service.Service) http.Handler {
 
 	mux.HandleFunc("POST /list-items", a.postListItem)
 	mux.HandleFunc("PATCH /list-items/{id}", a.patchListItem)
+	mux.HandleFunc("GET /list-items", a.getListItems)
 
 	mux.HandleFunc("POST /good-identities", a.postGoodIdentity)
+
+	mux.HandleFunc("POST /sync/batch", a.postSyncBatch)
 
 	return mux
 }
@@ -67,9 +77,23 @@ func ptrCreatedBy(r *http.Request) *string {
 	return &v
 }
 
+func (a *API) parseSince(w http.ResponseWriter, r *http.Request, key string) (time.Time, bool) {
+	s := r.URL.Query().Get(key)
+	if s == "" {
+		return time.Time{}, true
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid timestamp format, use RFC3339")
+		return time.Time{}, false
+	}
+	return t, true
+}
+
 type goodUpsertReq struct {
-	ID   uuid.UUID `json:"id"`
-	Name string    `json:"name"`
+	ID         uuid.UUID  `json:"id"`
+	CategoryID *uuid.UUID `json:"category_id"`
+	Name       string     `json:"name"`
 }
 
 func (a *API) postUpsertGood(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +105,7 @@ func (a *API) postUpsertGood(w http.ResponseWriter, r *http.Request) {
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-	g, err := a.svc.UpsertGood(r.Context(), ownerID, req.ID, req.Name, ptrCreatedBy(r))
+	g, err := a.svc.UpsertGood(r.Context(), ownerID, req.ID, req.CategoryID, req.Name, ptrCreatedBy(r))
 	if err != nil {
 		writeSvcErr(w, err)
 		return
@@ -89,11 +113,31 @@ func (a *API) postUpsertGood(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, goodRespFrom(*g))
 }
 
-func (a *API) getGoodsSearch(w http.ResponseWriter, r *http.Request) {
+func (a *API) getGoods(w http.ResponseWriter, r *http.Request) {
 	ownerID, ok := a.owner(w, r)
 	if !ok {
 		return
 	}
+
+	since, ok := a.parseSince(w, r, "updated_since")
+	if !ok {
+		return
+	}
+
+	if !since.IsZero() {
+		items, err := a.svc.ListGoodsSince(r.Context(), ownerID, since)
+		if err != nil {
+			writeSvcErr(w, err)
+			return
+		}
+		out := make([]goodResp, 0, len(items))
+		for _, g := range items {
+			out = append(out, goodRespFrom(g))
+		}
+		httpx.WriteJSON(w, http.StatusOK, out)
+		return
+	}
+
 	q := r.URL.Query().Get("q")
 	items, err := a.svc.SearchGoods(r.Context(), ownerID, q)
 	if err != nil {
@@ -102,7 +146,7 @@ func (a *API) getGoodsSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]goodSnippet, 0, len(items))
 	for _, g := range items {
-		out = append(out, goodSnippet{ID: g.ID, Name: g.Name})
+		out = append(out, goodSnippet{ID: g.ID, Name: g.Name, CategoryID: g.CategoryID})
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
@@ -164,7 +208,7 @@ func (a *API) getMergeCandidates(w http.ResponseWriter, r *http.Request) {
 	mapSnippets := func(gs []models.Good) []goodSnippet {
 		out := make([]goodSnippet, 0, len(gs))
 		for _, g := range gs {
-			out = append(out, goodSnippet{ID: g.ID, Name: g.Name})
+			out = append(out, goodSnippet{ID: g.ID, Name: g.Name, CategoryID: g.CategoryID})
 		}
 		return out
 	}
@@ -178,13 +222,15 @@ func (a *API) getMergeCandidates(w http.ResponseWriter, r *http.Request) {
 }
 
 type goodSnippet struct {
-	ID   uuid.UUID `json:"id"`
-	Name string    `json:"name"`
+	ID         uuid.UUID  `json:"id"`
+	Name       string     `json:"name"`
+	CategoryID *uuid.UUID `json:"category_id"`
 }
 
 type goodResp struct {
 	ID             uuid.UUID  `json:"id"`
 	OwnerID        uuid.UUID  `json:"owner_id"`
+	CategoryID     *uuid.UUID `json:"category_id"`
 	Name           string     `json:"name"`
 	NormalizedName string     `json:"normalized_name"`
 	MergedInto     *uuid.UUID `json:"merged_into,omitempty"`
@@ -196,6 +242,7 @@ func goodRespFrom(g models.Good) goodResp {
 	return goodResp{
 		ID:             g.ID,
 		OwnerID:        g.OwnerID,
+		CategoryID:     g.CategoryID,
 		Name:           g.Name,
 		NormalizedName: g.NormalizedName,
 		MergedInto:     g.MergedInto,
@@ -226,11 +273,31 @@ func (a *API) postUpsertStore(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, storeRespFrom(*st))
 }
 
-func (a *API) getStoresSearch(w http.ResponseWriter, r *http.Request) {
+func (a *API) getStores(w http.ResponseWriter, r *http.Request) {
 	ownerID, ok := a.owner(w, r)
 	if !ok {
 		return
 	}
+
+	since, ok := a.parseSince(w, r, "updated_since")
+	if !ok {
+		return
+	}
+
+	if !since.IsZero() {
+		items, err := a.svc.ListStoresSince(r.Context(), ownerID, since)
+		if err != nil {
+			writeSvcErr(w, err)
+			return
+		}
+		out := make([]storeResp, 0, len(items))
+		for _, s := range items {
+			out = append(out, storeRespFrom(s))
+		}
+		httpx.WriteJSON(w, http.StatusOK, out)
+		return
+	}
+
 	q := r.URL.Query().Get("q")
 	items, err := a.svc.SearchStores(r.Context(), ownerID, q)
 	if err != nil {
@@ -286,7 +353,7 @@ func (a *API) postOffer(w http.ResponseWriter, r *http.Request) {
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-	o, err := a.svc.CreateOffer(r.Context(), ownerID, req.ID, req.GoodID, req.StoreID, ptrCreatedBy(r))
+	o, err := a.svc.UpsertOffer(r.Context(), ownerID, req.ID, req.GoodID, req.StoreID, ptrCreatedBy(r))
 	if err != nil {
 		writeSvcErr(w, err)
 		return
@@ -303,6 +370,58 @@ func offerRespFrom(o models.Offer) map[string]any {
 		"created_at": o.CreatedAt,
 		"updated_at": o.UpdatedAt,
 	}
+}
+
+func (a *API) getOffers(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := a.owner(w, r)
+	if !ok {
+		return
+	}
+
+	since, ok := a.parseSince(w, r, "updated_since")
+	if !ok {
+		return
+	}
+
+	if since.IsZero() {
+		httpx.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "updated_since is required for offers list")
+		return
+	}
+
+	items, err := a.svc.ListOffersSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(items))
+	for _, o := range items {
+		out = append(out, offerRespFrom(o))
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
+func (a *API) getGoodIdentities(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := a.owner(w, r)
+	if !ok {
+		return
+	}
+	id, ok := httpx.ParseUUID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	items, err := a.svc.ListGoodIdentities(r.Context(), ownerID, id)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	out := make([]map[string]string, 0, len(items))
+	for _, it := range items {
+		out = append(out, map[string]string{
+			"source":      it.Source,
+			"external_id": it.ExternalID,
+		})
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
 func (a *API) getGoodOffers(w http.ResponseWriter, r *http.Request) {
@@ -448,6 +567,136 @@ func (a *API) getOfferLatestPrice(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *API) getPriceRecords(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := a.owner(w, r)
+	if !ok {
+		return
+	}
+
+	since, ok := a.parseSince(w, r, "since")
+	if !ok {
+		return
+	}
+
+	if since.IsZero() {
+		httpx.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "since is required for price records")
+		return
+	}
+
+	items, err := a.svc.ListPriceRecordsSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(items))
+	for _, pr := range items {
+		out = append(out, priceRecordRespFrom(pr))
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
+type categoryReq struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+func (a *API) postCategory(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := a.owner(w, r)
+	if !ok {
+		return
+	}
+	var req categoryReq
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	c, err := a.svc.UpsertCategory(r.Context(), ownerID, req.ID, req.Name)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, categoryRespFrom(*c))
+}
+
+func (a *API) getCategories(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := a.owner(w, r)
+	if !ok {
+		return
+	}
+
+	since, ok := a.parseSince(w, r, "updated_since")
+	if !ok {
+		return
+	}
+
+	if !since.IsZero() {
+		items, err := a.svc.ListCategoriesSince(r.Context(), ownerID, since)
+		if err != nil {
+			writeSvcErr(w, err)
+			return
+		}
+		out := make([]categoryResp, 0, len(items))
+		for _, c := range items {
+			out = append(out, categoryRespFrom(c))
+		}
+		httpx.WriteJSON(w, http.StatusOK, out)
+		return
+	}
+
+	q := r.URL.Query().Get("q")
+	items, err := a.svc.SearchCategories(r.Context(), ownerID, q)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	out := make([]categorySnippet, 0, len(items))
+	for _, c := range items {
+		out = append(out, categorySnippet{ID: c.ID, Name: c.Name})
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
+type categorySnippet struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+func (a *API) getCategory(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := a.owner(w, r)
+	if !ok {
+		return
+	}
+	id, ok := httpx.ParseUUID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	c, err := a.svc.GetCategory(r.Context(), ownerID, id)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, categoryRespFrom(*c))
+}
+
+type categoryResp struct {
+	ID             uuid.UUID `json:"id"`
+	OwnerID        uuid.UUID `json:"owner_id"`
+	Name           string    `json:"name"`
+	NormalizedName string    `json:"normalized_name"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+func categoryRespFrom(c models.Category) categoryResp {
+	return categoryResp{
+		ID:             c.ID,
+		OwnerID:        c.OwnerID,
+		Name:           c.Name,
+		NormalizedName: c.NormalizedName,
+		CreatedAt:      c.CreatedAt,
+		UpdatedAt:      c.UpdatedAt,
+	}
+}
+
 type listUpsertReq struct {
 	ID   uuid.UUID `json:"id"`
 	Name string    `json:"name"`
@@ -485,6 +734,26 @@ func (a *API) getLists(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+
+	since, ok := a.parseSince(w, r, "updated_since")
+	if !ok {
+		return
+	}
+
+	if !since.IsZero() {
+		items, err := a.svc.ListListsSince(r.Context(), ownerID, since)
+		if err != nil {
+			writeSvcErr(w, err)
+			return
+		}
+		out := make([]map[string]any, 0, len(items))
+		for _, l := range items {
+			out = append(out, listRespFrom(l))
+		}
+		httpx.WriteJSON(w, http.StatusOK, out)
+		return
+	}
+
 	items, err := a.svc.ListShoppingLists(r.Context(), ownerID)
 	if err != nil {
 		writeSvcErr(w, err)
@@ -580,6 +849,45 @@ func (a *API) postListItem(w http.ResponseWriter, r *http.Request) {
 		"created_at":     it.CreatedAt,
 		"updated_at":     it.UpdatedAt,
 	})
+}
+
+func (a *API) getListItems(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := a.owner(w, r)
+	if !ok {
+		return
+	}
+
+	since, ok := a.parseSince(w, r, "updated_since")
+	if !ok {
+		return
+	}
+
+	if since.IsZero() {
+		httpx.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "updated_since is required for list items")
+		return
+	}
+
+	items, err := a.svc.ListListItemsSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(items))
+	for _, it := range items {
+		out = append(out, map[string]any{
+			"id":             it.ID,
+			"owner_id":       it.OwnerID,
+			"list_id":        it.ListID,
+			"good_id":        it.GoodID,
+			"offer_id":       it.OfferID,
+			"quantity":       it.Quantity,
+			"price_snapshot": it.PriceSnapshot,
+			"is_purchased":   it.IsPurchased,
+			"created_at":     it.CreatedAt,
+			"updated_at":     it.UpdatedAt,
+		})
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
 func (a *API) patchListItem(w http.ResponseWriter, r *http.Request) {
@@ -680,4 +988,108 @@ func (a *API) postGoodIdentity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := a.owner(w, r)
+	if !ok {
+		return
+	}
+
+	since, ok := a.parseSince(w, r, "since")
+	if !ok {
+		return
+	}
+
+	if since.IsZero() {
+		httpx.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "since is required for batch sync")
+		return
+	}
+
+	goods, err := a.svc.ListGoodsSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	stores, err := a.svc.ListStoresSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	offers, err := a.svc.ListOffersSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	lists, err := a.svc.ListListsSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	listItems, err := a.svc.ListListItemsSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	categories, err := a.svc.ListCategoriesSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	prices, err := a.svc.ListPriceRecordsSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+
+	respGoods := make([]goodResp, 0, len(goods))
+	for _, g := range goods {
+		respGoods = append(respGoods, goodRespFrom(g))
+	}
+	respStores := make([]storeResp, 0, len(stores))
+	for _, s := range stores {
+		respStores = append(respStores, storeRespFrom(s))
+	}
+	respOffers := make([]map[string]any, 0, len(offers))
+	for _, o := range offers {
+		respOffers = append(respOffers, offerRespFrom(o))
+	}
+	respLists := make([]map[string]any, 0, len(lists))
+	for _, l := range lists {
+		respLists = append(respLists, listRespFrom(l))
+	}
+	respListItems := make([]map[string]any, 0, len(listItems))
+	for _, it := range listItems {
+		respListItems = append(respListItems, map[string]any{
+			"id":             it.ID,
+			"owner_id":       it.OwnerID,
+			"list_id":        it.ListID,
+			"good_id":        it.GoodID,
+			"offer_id":       it.OfferID,
+			"quantity":       it.Quantity,
+			"price_snapshot": it.PriceSnapshot,
+			"is_purchased":   it.IsPurchased,
+			"created_at":     it.CreatedAt,
+			"updated_at":     it.UpdatedAt,
+		})
+	}
+	respCategories := make([]categoryResp, 0, len(categories))
+	for _, c := range categories {
+		respCategories = append(respCategories, categoryRespFrom(c))
+	}
+	respPrices := make([]map[string]any, 0, len(prices))
+	for _, pr := range prices {
+		respPrices = append(respPrices, priceRecordRespFrom(pr))
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"categories":    respCategories,
+		"goods":         respGoods,
+		"stores":        respStores,
+		"offers":        respOffers,
+		"lists":         respLists,
+		"list_items":    respListItems,
+		"price_records": respPrices,
+		"server_time":   time.Now().UTC(),
+	})
 }

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 
+	"github.com/exndiver/shopping-backend/internal/models"
 	"github.com/google/uuid"
 )
 
@@ -35,4 +36,27 @@ func RepointGoodIdentities(ctx context.Context, db DBTX, ownerID, fromGoodID, to
 		UPDATE good_identities SET good_id = $3 WHERE owner_id = $1 AND good_id = $2
 	`, ownerID, fromGoodID, toGoodID)
 	return err
+}
+
+func ListGoodIdentities(ctx context.Context, db DBTX, ownerID, goodID uuid.UUID) ([]models.GoodIdentity, error) {
+	rows, err := db.Query(ctx, `
+		SELECT source, external_id
+		FROM good_identities
+		WHERE owner_id = $1 AND good_id = $2
+		ORDER BY source ASC, external_id ASC
+	`, ownerID, goodID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.GoodIdentity
+	for rows.Next() {
+		var id models.GoodIdentity
+		if err := rows.Scan(&id.Source, &id.ExternalID); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/exndiver/shopping-backend/internal/models"
 	"github.com/google/uuid"
@@ -46,7 +47,7 @@ func InsertOffer(ctx context.Context, db DBTX, o models.Offer) error {
 func GetOffer(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.Offer, error) {
 	row := db.QueryRow(ctx, `
 		SELECT id, owner_id, good_id, store_id, created_by, created_at, updated_at
-		FROM offers WHERE owner_id = $1 AND id = $2
+		FROM offers WHERE owner_id = $1 AND id = $2 AND `+sqlActive+`
 	`, ownerID, id)
 	o, err := scanOffer(row)
 	if err == pgx.ErrNoRows {
@@ -58,7 +59,7 @@ func GetOffer(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.Offe
 func FindOfferByTriple(ctx context.Context, db DBTX, ownerID, goodID, storeID uuid.UUID) (*models.Offer, error) {
 	row := db.QueryRow(ctx, `
 		SELECT id, owner_id, good_id, store_id, created_by, created_at, updated_at
-		FROM offers WHERE owner_id = $1 AND good_id = $2 AND store_id = $3
+		FROM offers WHERE owner_id = $1 AND good_id = $2 AND store_id = $3 AND `+sqlActive+`
 	`, ownerID, goodID, storeID)
 	o, err := scanOffer(row)
 	if err == pgx.ErrNoRows {
@@ -67,10 +68,24 @@ func FindOfferByTriple(ctx context.Context, db DBTX, ownerID, goodID, storeID uu
 	return o, err
 }
 
+func TouchOfferUpdatedAt(ctx context.Context, db DBTX, ownerID, offerID uuid.UUID) error {
+	tag, err := db.Exec(ctx, `
+		UPDATE offers SET updated_at = now()
+		WHERE owner_id = $1 AND id = $2 AND `+sqlActive+`
+	`, ownerID, offerID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func UpdateOfferGoodID(ctx context.Context, db DBTX, ownerID, offerID, newGoodID uuid.UUID) error {
 	tag, err := db.Exec(ctx, `
 		UPDATE offers SET good_id = $3, updated_at = now()
-		WHERE owner_id = $1 AND id = $2
+		WHERE owner_id = $1 AND id = $2 AND `+sqlActive+`
 	`, ownerID, offerID, newGoodID)
 	if err != nil {
 		return err
@@ -103,8 +118,33 @@ func ListOffersForGood(ctx context.Context, db DBTX, ownerID, goodID uuid.UUID) 
 	rows, err := db.Query(ctx, `
 		SELECT id, owner_id, good_id, store_id, created_by, created_at, updated_at
 		FROM offers
-		WHERE owner_id = $1 AND good_id = $2
+		WHERE owner_id = $1 AND good_id = $2 AND `+sqlActive+`
 	`, ownerID, goodID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.Offer
+	for rows.Next() {
+		o, err := scanOffer(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *o)
+	}
+	return out, rows.Err()
+}
+
+
+
+func ListOffersSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since time.Time) ([]models.Offer, error) {
+	rows, err := db.Query(ctx, `
+		SELECT id, owner_id, good_id, store_id, created_by, created_at, updated_at
+		FROM offers
+		WHERE owner_id = $1 AND updated_at > $2 AND `+sqlActive+`
+		ORDER BY updated_at ASC, id ASC
+	`, ownerID, since)
 	if err != nil {
 		return nil, err
 	}

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/exndiver/shopping-backend/internal/models"
 	"github.com/google/uuid"
@@ -45,7 +46,7 @@ func UpdateShoppingList(ctx context.Context, db DBTX, ownerID, id uuid.UUID, nam
 		SET name = $3,
 		    updated_at = now(),
 		    created_by = COALESCE($4, created_by)
-		WHERE owner_id = $1 AND id = $2
+		WHERE owner_id = $1 AND id = $2 AND `+sqlActive+`
 	`, ownerID, id, name, cb)
 	if err != nil {
 		return err
@@ -59,7 +60,7 @@ func UpdateShoppingList(ctx context.Context, db DBTX, ownerID, id uuid.UUID, nam
 func GetShoppingList(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.ShoppingList, error) {
 	row := db.QueryRow(ctx, `
 		SELECT id, owner_id, name, created_by, created_at, updated_at
-		FROM shopping_lists WHERE owner_id = $1 AND id = $2
+		FROM shopping_lists WHERE owner_id = $1 AND id = $2 AND `+sqlActive+`
 	`, ownerID, id)
 	l, err := scanShoppingList(row)
 	if err == pgx.ErrNoRows {
@@ -75,10 +76,33 @@ func ListShoppingLists(ctx context.Context, db DBTX, ownerID uuid.UUID, limit in
 	rows, err := db.Query(ctx, `
 		SELECT id, owner_id, name, created_by, created_at, updated_at
 		FROM shopping_lists
-		WHERE owner_id = $1
+		WHERE owner_id = $1 AND `+sqlActive+`
 		ORDER BY updated_at DESC
 		LIMIT $2
 	`, ownerID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.ShoppingList
+	for rows.Next() {
+		l, err := scanShoppingList(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *l)
+	}
+	return out, rows.Err()
+}
+
+func ListListsSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since time.Time) ([]models.ShoppingList, error) {
+	rows, err := db.Query(ctx, `
+		SELECT id, owner_id, name, created_by, created_at, updated_at
+		FROM shopping_lists
+		WHERE owner_id = $1 AND updated_at > $2 AND `+sqlActive+`
+		ORDER BY updated_at ASC, id ASC
+	`, ownerID, since)
 	if err != nil {
 		return nil, err
 	}

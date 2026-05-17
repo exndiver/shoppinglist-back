@@ -62,6 +62,42 @@ Authorization: Bearer <owner_uuid>
 
 ---
 
+## Категории
+
+Пользовательские группы товаров (owner-scoped). Участвуют в sync **до** товаров.
+
+### `POST /categories`
+
+Upsert категории по `id`.
+
+**Тело:** `id` (UUID), `name` (string).
+
+**Ответ `200`:** `id`, `owner_id`, `name`, `normalized_name`, `created_at`, `updated_at`.
+
+---
+
+### `GET /categories?q=...`
+
+Поиск по `normalized_name` (ILIKE). Без `q` — до 200 категорий владельца.
+
+**Ответ `200`:** `[{ "id": "…", "name": "Groceries" }, …]`
+
+---
+
+### `GET /categories?updated_since=...`
+
+Инкрементальный pull: `updated_at > updated_since`, порядок `updated_at ASC, id ASC`.
+
+**Ответ `200`:** массив полных объектов категории.
+
+---
+
+### `GET /categories/{id}`
+
+Полная категория. `404`, если не принадлежит владельцу.
+
+---
+
 ## Товары
 
 ### `POST /goods`
@@ -74,6 +110,9 @@ Authorization: Bearer <owner_uuid>
 |------|-----|-------------|
 | `id` | UUID | да |
 | `name` | string | да |
+| `category_id` | UUID или `null` | нет |
+
+Если `category_id` задан — категория должна существовать у того же `owner_id`. `null` снимает категорию.
 
 **Ответ `200`:** объект товара (см. ниже).
 
@@ -81,19 +120,27 @@ Authorization: Bearer <owner_uuid>
 
 ### `GET /goods?q=...`
 
-Поиск товаров владельца. `q` — опциональная строка поиска.
+Поиск канонических товаров. `q` — опционально.
 
-**Ответ `200`:** массив сниппетов:
+**Ответ `200`:**
 
 ```json
-[{ "id": "…", "name": "Молоко" }]
+[{ "id": "…", "name": "Молоко", "category_id": "…" }]
 ```
+
+`category_id` может быть `null`.
+
+---
+
+### `GET /goods?updated_since=...`
+
+Инкрементальный pull всех изменённых товаров (включая с `merged_into`), порядок `updated_at ASC, id ASC`.
 
 ---
 
 ### `GET /goods/{id}`
 
-Канонический товар по `id`.
+Канонический товар: если `id` был объединён в другой, возвращается **целевой** канонический товар.
 
 **Ответ `200`:** объект товара:
 
@@ -101,6 +148,7 @@ Authorization: Bearer <owner_uuid>
 |------|-----|
 | `id` | UUID |
 | `owner_id` | UUID |
+| `category_id` | UUID или `null` |
 | `name` | string |
 | `normalized_name` | string |
 | `merged_into` | UUID или отсутствует |
@@ -122,6 +170,10 @@ Authorization: Bearer <owner_uuid>
 
 **Ответ `204 No Content`** при успехе.
 
+При merge: если у source есть `category_id`, а у target нет — категория переносится на target; если у обоих есть — остаётся категория target.
+
+Циклы merge запрещены (`400 BAD_REQUEST`), например A→B при уже существующей цепочке B→…→A.
+
 ---
 
 ### `GET /goods/{id}/merge-candidates?q=...`
@@ -137,6 +189,20 @@ Authorization: Bearer <owner_uuid>
   "contains": [],
   "others": []
 }
+```
+
+---
+
+### `GET /goods/{id}/identities`
+
+Внешние идентификаторы канонического товара (после resolve merge).
+
+**Ответ `200`:**
+
+```json
+[
+  { "source": "barcode", "external_id": "4601234567890" }
+]
 ```
 
 ---
@@ -183,13 +249,17 @@ Upsert магазина.
 
 **Ответ `200`:** `[{ "id", "name" }, …]`.
 
+### `GET /stores?updated_since=...`
+
+Инкрементальный pull магазинов.
+
 ---
 
 ## Офферы и цены
 
 ### `POST /offers`
 
-Создание оффера «товар в магазине».
+Upsert оффера «товар в магазине» (идемпотентно по `id`). `good_id` и `store_id` приводятся к каноническим.
 
 **Тело:**
 
@@ -200,6 +270,20 @@ Upsert магазина.
 | `store_id` | UUID |
 
 **Ответ `200`:** `id`, `owner_id`, `good_id`, `store_id`, `created_at`, `updated_at`.
+
+---
+
+### `GET /offers?updated_since=...`
+
+Инкрементальный pull офферов. В ответе `good_id` и `store_id` — **канонические** UUID.
+
+---
+
+### `GET /price-records?since=...`
+
+Append-only поток цен: `created_at > since`, порядок `created_at ASC, id ASC`. Параметр **`since`** (RFC3339), обязателен.
+
+**Ответ `200`:** массив записей (как `POST /price-records`).
 
 ---
 
@@ -268,9 +352,17 @@ Upsert списка.
 
 ### `GET /lists`
 
-Все списки владельца.
+Без query — все списки владельца.
+
+С `updated_since` — инкрементальный pull, `ORDER BY updated_at ASC, id ASC`.
 
 **Ответ `200`:** массив объектов списка (как выше).
+
+---
+
+### `GET /list-items?updated_since=...`
+
+Инкрементальный pull позиций. В ответе `good_id` — **канонический**.
 
 ---
 
@@ -305,7 +397,7 @@ Upsert списка.
 }
 ```
 
-Поля `offer_id` и `price_snapshot` могут отсутствовать, если `null`.
+Поля `offer_id` и `price_snapshot` могут отсутствовать, если `null`. Поле `good_id` в позициях — **канонический** UUID товара.
 
 ---
 
@@ -357,6 +449,31 @@ Upsert списка.
 | `source` | string (не пустая после trim) |
 
 **Ответ `204 No Content`** при успехе.
+
+---
+
+## Soft delete (подготовка)
+
+В БД у `goods`, `stores`, `offers`, `lists`, `categories` есть поле `deleted_at`.  
+**DELETE-эндпоинтов пока нет** — API не возвращает строки с `deleted_at IS NOT NULL`.  
+В будущем удаление будет менять `deleted_at` и `updated_at` для incremental sync.
+
+---
+
+## Синхронизация
+
+Рекомендуемый порядок pull на клиенте:
+
+1. `categories` (`updated_since`)
+2. `goods`
+3. `stores`, `offers`, `lists`, `list-items`
+4. `price-records` (`since` по `created_at`)
+
+### `POST /sync/batch?since=...`
+
+Один запрос: все сущности с `updated_at` / `created_at` (для цен) строго **после** `since`. В теле ответа ключи в порядке: `categories`, `goods`, `stores`, `offers`, `lists`, `list_items`, `price_records`, `server_time`.
+
+Параметр `since` (RFC3339) обязателен.
 
 ---
 

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 
+	"github.com/exndiver/shopping-backend/internal/models"
 	"github.com/exndiver/shopping-backend/internal/repository"
 	"github.com/google/uuid"
 )
@@ -13,4 +14,12 @@ func (s *Service) UpsertGoodIdentity(ctx context.Context, ownerID, goodID uuid.U
 		return err
 	}
 	return repository.UpsertGoodIdentity(ctx, s.Pool, ownerID, canon, externalID, source)
+}
+
+func (s *Service) ListGoodIdentities(ctx context.Context, ownerID, goodID uuid.UUID) ([]models.GoodIdentity, error) {
+	canon, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, goodID)
+	if err != nil {
+		return nil, err
+	}
+	return repository.ListGoodIdentities(ctx, s.Pool, ownerID, canon)
 }

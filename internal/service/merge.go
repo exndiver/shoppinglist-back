@@ -21,6 +21,14 @@ func (s *Service) MergeGoods(ctx context.Context, ownerID, sourceGoodID, targetG
 		return nil
 	}
 
+	cycle, err := repository.GoodMergeWouldCycle(ctx, s.Pool, ownerID, ca, cb)
+	if err != nil {
+		return err
+	}
+	if cycle {
+		return ErrBadRequest
+	}
+
 	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
@@ -28,6 +36,9 @@ func (s *Service) MergeGoods(ctx context.Context, ownerID, sourceGoodID, targetG
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	if err := repository.MarkGoodMerged(ctx, tx, ownerID, ca, cb); err != nil {
+		return err
+	}
+	if err := repository.TransferCategoryOnGoodMerge(ctx, tx, ownerID, ca, cb); err != nil {
 		return err
 	}
 	if err := repointOffersAfterGoodMerge(ctx, tx, ownerID, ca, cb); err != nil {

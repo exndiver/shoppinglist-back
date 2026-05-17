@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/exndiver/shopping-backend/internal/models"
 	"github.com/google/uuid"
@@ -40,7 +41,7 @@ func scanStore(row RowScanner) (*models.Store, error) {
 func GetStore(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.Store, error) {
 	row := db.QueryRow(ctx, `
 		SELECT id, owner_id, name, normalized_name, merged_into, created_by, created_at, updated_at
-		FROM stores WHERE owner_id = $1 AND id = $2
+		FROM stores WHERE owner_id = $1 AND id = $2 AND `+sqlActive+`
 	`, ownerID, id)
 	s, err := scanStore(row)
 	if err == pgx.ErrNoRows {
@@ -72,7 +73,7 @@ func UpdateStoreCanonical(ctx context.Context, db DBTX, ownerID, canonicalID uui
 		    normalized_name = $4,
 		    updated_at = now(),
 		    created_by = COALESCE($5, created_by)
-		WHERE owner_id = $1 AND id = $2 AND merged_into IS NULL
+		WHERE owner_id = $1 AND id = $2 AND merged_into IS NULL AND `+sqlActive+`
 	`, ownerID, canonicalID, name, normalized, cb)
 	if err != nil {
 		return err
@@ -92,10 +93,36 @@ func SearchCanonicalStores(ctx context.Context, db DBTX, ownerID uuid.UUID, norm
 		FROM stores
 		WHERE owner_id = $1
 		  AND merged_into IS NULL
+		  AND `+sqlActive+`
 		  AND ($2 = '' OR normalized_name LIKE '%' || $2 || '%')
 		ORDER BY normalized_name ASC
 		LIMIT $3
 	`, ownerID, normalizedContains, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.Store
+	for rows.Next() {
+		s, err := scanStore(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *s)
+	}
+	return out, rows.Err()
+}
+
+
+
+func ListStoresSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since time.Time) ([]models.Store, error) {
+	rows, err := db.Query(ctx, `
+		SELECT id, owner_id, name, normalized_name, merged_into, created_by, created_at, updated_at
+		FROM stores
+		WHERE owner_id = $1 AND updated_at > $2 AND `+sqlActive+`
+		ORDER BY updated_at ASC, id ASC
+	`, ownerID, since)
 	if err != nil {
 		return nil, err
 	}

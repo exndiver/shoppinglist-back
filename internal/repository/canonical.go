@@ -13,7 +13,8 @@ func ResolveGoodCanonical(ctx context.Context, db DBTX, ownerID, goodID uuid.UUI
 	for depth := 0; depth < 64; depth++ {
 		var merged pgtype.UUID
 		err := db.QueryRow(ctx, `
-			SELECT merged_into FROM goods WHERE owner_id = $1 AND id = $2
+			SELECT merged_into FROM goods
+			WHERE owner_id = $1 AND id = $2 AND `+sqlActive+`
 		`, ownerID, cur).Scan(&merged)
 		if err == pgx.ErrNoRows {
 			return uuid.Nil, ErrNotFound
@@ -34,7 +35,8 @@ func ResolveStoreCanonical(ctx context.Context, db DBTX, ownerID, storeID uuid.U
 	for depth := 0; depth < 64; depth++ {
 		var merged pgtype.UUID
 		err := db.QueryRow(ctx, `
-			SELECT merged_into FROM stores WHERE owner_id = $1 AND id = $2
+			SELECT merged_into FROM stores
+			WHERE owner_id = $1 AND id = $2 AND `+sqlActive+`
 		`, ownerID, cur).Scan(&merged)
 		if err == pgx.ErrNoRows {
 			return uuid.Nil, ErrNotFound

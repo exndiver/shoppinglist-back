@@ -71,3 +71,7 @@ func (s *Service) LatestPrice(ctx context.Context, ownerID, offerID uuid.UUID) (
 	}
 	return pr, true, nil
 }
+
+func (s *Service) ListPriceRecordsSince(ctx context.Context, ownerID uuid.UUID, since time.Time) ([]models.PriceRecord, error) {
+	return repository.ListPriceRecordsSince(ctx, s.Pool, ownerID, since)
+}

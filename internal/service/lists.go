@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/exndiver/shopping-backend/internal/models"
 	"github.com/exndiver/shopping-backend/internal/pgutil"
@@ -72,12 +73,19 @@ func (s *Service) GetListDetail(ctx context.Context, ownerID, listID uuid.UUID) 
 	for _, it := range items {
 		gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, it.GoodID)
 		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				continue
+			}
 			return nil, err
 		}
 		g, err := repository.GetGood(ctx, s.Pool, ownerID, gc)
 		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				continue
+			}
 			return nil, err
 		}
+		it.GoodID = gc
 		outItems = append(outItems, ListItemDetail{
 			ListItem: it,
 			GoodName: g.Name,
@@ -140,6 +148,7 @@ func (s *Service) AddListItem(ctx context.Context, ownerID uuid.UUID, id, listID
 	if err != nil {
 		return nil, err
 	}
+	got.GoodID = gc
 	g, err := repository.GetGood(ctx, s.Pool, ownerID, gc)
 	if err != nil {
 		return nil, err
@@ -188,9 +197,34 @@ func (s *Service) GetListItemDetail(ctx context.Context, ownerID, itemID uuid.UU
 	if err != nil {
 		return nil, err
 	}
+	it.GoodID = gc
 	g, err := repository.GetGood(ctx, s.Pool, ownerID, gc)
 	if err != nil {
 		return nil, err
 	}
 	return &ListItemDetail{ListItem: *it, GoodName: g.Name}, nil
+}
+
+func (s *Service) ListListsSince(ctx context.Context, ownerID uuid.UUID, since time.Time) ([]models.ShoppingList, error) {
+	return repository.ListListsSince(ctx, s.Pool, ownerID, since)
+}
+
+func (s *Service) ListListItemsSince(ctx context.Context, ownerID uuid.UUID, since time.Time) ([]models.ListItem, error) {
+	items, err := repository.ListListItemsSince(ctx, s.Pool, ownerID, since)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]models.ListItem, 0, len(items))
+	for _, it := range items {
+		gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, it.GoodID)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		it.GoodID = gc
+		out = append(out, it)
+	}
+	return out, nil
 }

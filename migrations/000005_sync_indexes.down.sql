@@ -1,0 +1,9 @@
+DROP INDEX IF EXISTS idx_price_records_owner_created;
+DROP INDEX IF EXISTS idx_list_items_owner_updated;
+DROP INDEX IF EXISTS idx_lists_owner_updated;
+DROP INDEX IF EXISTS idx_offers_owner_updated;
+DROP INDEX IF EXISTS idx_stores_owner_updated;
+DROP INDEX IF EXISTS idx_goods_owner_updated;
+DROP INDEX IF EXISTS idx_goods_category;
+DROP INDEX IF EXISTS idx_categories_owner_normalized;
+DROP INDEX IF EXISTS idx_categories_owner_updated;

@@ -160,3 +160,27 @@ func PricesLikelyEqual(a, b *models.PriceRecord) bool {
 	}
 	return a.RecordedAt.UTC().Truncate(time.Millisecond).Equal(b.RecordedAt.UTC().Truncate(time.Millisecond))
 }
+
+func ListPriceRecordsSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since time.Time) ([]models.PriceRecord, error) {
+	rows, err := db.Query(ctx, `
+		SELECT pr.id, pr.owner_id, pr.offer_id, pr.price, pr.pack_size, pr.unit, pr.recorded_at, pr.recorded_by, pr.created_at
+		FROM price_records pr
+		INNER JOIN offers o ON o.id = pr.offer_id AND o.owner_id = pr.owner_id AND o.deleted_at IS NULL
+		WHERE pr.owner_id = $1 AND pr.created_at > $2
+		ORDER BY pr.created_at ASC, pr.id ASC
+	`, ownerID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.PriceRecord
+	for rows.Next() {
+		pr, err := scanPriceRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *pr)
+	}
+	return out, rows.Err()
+}

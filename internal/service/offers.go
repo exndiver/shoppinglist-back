@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/exndiver/shopping-backend/internal/models"
 	"github.com/exndiver/shopping-backend/internal/pgutil"
@@ -10,7 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func (s *Service) CreateOffer(ctx context.Context, ownerID uuid.UUID, id, goodID, storeID uuid.UUID, createdBy *string) (*models.Offer, error) {
+func (s *Service) UpsertOffer(ctx context.Context, ownerID uuid.UUID, id, goodID, storeID uuid.UUID, createdBy *string) (*models.Offer, error) {
 	gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, goodID)
 	if err != nil {
 		return nil, err
@@ -30,7 +31,10 @@ func (s *Service) CreateOffer(ctx context.Context, ownerID uuid.UUID, id, goodID
 			return nil, err
 		}
 		if eg == gc && es == sc {
-			return existing, nil
+			if err := repository.TouchOfferUpdatedAt(ctx, s.Pool, ownerID, id); err != nil {
+				return nil, err
+			}
+			return repository.GetOffer(ctx, s.Pool, ownerID, id)
 		}
 		return nil, ErrConflict
 	} else if err != nil && !errors.Is(err, repository.ErrNotFound) {
@@ -51,7 +55,10 @@ func (s *Service) CreateOffer(ctx context.Context, ownerID uuid.UUID, id, goodID
 				return nil, terr
 			}
 			if triple.ID == id {
-				return triple, nil
+				if err := repository.TouchOfferUpdatedAt(ctx, s.Pool, ownerID, id); err != nil {
+					return nil, err
+				}
+				return repository.GetOffer(ctx, s.Pool, ownerID, id)
 			}
 			return nil, ErrConflict
 		}
@@ -103,4 +110,24 @@ func (s *Service) ListOffersWithLatestPrices(ctx context.Context, ownerID, goodI
 	}
 
 	return out, nil
+}
+
+func (s *Service) ListOffersSince(ctx context.Context, ownerID uuid.UUID, since time.Time) ([]models.Offer, error) {
+	items, err := repository.ListOffersSince(ctx, s.Pool, ownerID, since)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, items[i].GoodID)
+		if err != nil {
+			return nil, err
+		}
+		items[i].GoodID = gc
+		sc, err := repository.ResolveStoreCanonical(ctx, s.Pool, ownerID, items[i].StoreID)
+		if err != nil {
+			return nil, err
+		}
+		items[i].StoreID = sc
+	}
+	return items, nil
 }

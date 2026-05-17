@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/exndiver/shopping-backend/internal/models"
 	"github.com/google/uuid"
@@ -11,11 +12,13 @@ import (
 
 func scanGood(row RowScanner) (*models.Good, error) {
 	var g models.Good
+	var catID pgtype.UUID
 	var merged pgtype.UUID
 	var cb pgtype.Text
 	err := row.Scan(
 		&g.ID,
 		&g.OwnerID,
+		&catID,
 		&g.Name,
 		&g.NormalizedName,
 		&merged,
@@ -25,6 +28,10 @@ func scanGood(row RowScanner) (*models.Good, error) {
 	)
 	if err != nil {
 		return nil, err
+	}
+	if catID.Valid {
+		u := uuid.UUID(catID.Bytes)
+		g.CategoryID = &u
 	}
 	if merged.Valid {
 		u := uuid.UUID(merged.Bytes)
@@ -39,8 +46,8 @@ func scanGood(row RowScanner) (*models.Good, error) {
 
 func GetGood(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.Good, error) {
 	row := db.QueryRow(ctx, `
-		SELECT id, owner_id, name, normalized_name, merged_into, created_by, created_at, updated_at
-		FROM goods WHERE owner_id = $1 AND id = $2
+		SELECT id, owner_id, category_id, name, normalized_name, merged_into, created_by, created_at, updated_at
+		FROM goods WHERE owner_id = $1 AND id = $2 AND `+sqlActive+`
 	`, ownerID, id)
 	g, err := scanGood(row)
 	if err == pgx.ErrNoRows {
@@ -55,25 +62,26 @@ func InsertGood(ctx context.Context, db DBTX, g models.Good) error {
 		cb = *g.CreatedBy
 	}
 	_, err := db.Exec(ctx, `
-		INSERT INTO goods (id, owner_id, name, normalized_name, merged_into, created_by)
-		VALUES ($1, $2, $3, $4, NULL, $5)
-	`, g.ID, g.OwnerID, g.Name, g.NormalizedName, cb)
+		INSERT INTO goods (id, owner_id, category_id, name, normalized_name, merged_into, created_by)
+		VALUES ($1, $2, $3, $4, $5, NULL, $6)
+	`, g.ID, g.OwnerID, g.CategoryID, g.Name, g.NormalizedName, cb)
 	return err
 }
 
-func UpdateGoodCanonical(ctx context.Context, db DBTX, ownerID, canonicalID uuid.UUID, name, normalized string, createdBy *string) error {
+func UpdateGoodCanonical(ctx context.Context, db DBTX, ownerID, canonicalID uuid.UUID, categoryID *uuid.UUID, name, normalized string, createdBy *string) error {
 	var cb any
 	if createdBy != nil {
 		cb = *createdBy
 	}
 	tag, err := db.Exec(ctx, `
 		UPDATE goods
-		SET name = $3,
-		    normalized_name = $4,
+		SET category_id = $3,
+		    name = $4,
+		    normalized_name = $5,
 		    updated_at = now(),
-		    created_by = COALESCE($5, created_by)
-		WHERE owner_id = $1 AND id = $2 AND merged_into IS NULL
-	`, ownerID, canonicalID, name, normalized, cb)
+		    created_by = COALESCE($6, created_by)
+		WHERE owner_id = $1 AND id = $2 AND merged_into IS NULL AND `+sqlActive+`
+	`, ownerID, canonicalID, categoryID, name, normalized, cb)
 	if err != nil {
 		return err
 	}
@@ -88,7 +96,7 @@ func MarkGoodMerged(ctx context.Context, db DBTX, ownerID, sourceCanonicalID, ta
 		UPDATE goods
 		SET merged_into = $3,
 		    updated_at = now()
-		WHERE owner_id = $1 AND id = $2 AND merged_into IS NULL AND id <> $3
+		WHERE owner_id = $1 AND id = $2 AND merged_into IS NULL AND id <> $3 AND `+sqlActive+`
 	`, ownerID, sourceCanonicalID, targetCanonicalID)
 	if err != nil {
 		return err
@@ -96,7 +104,29 @@ func MarkGoodMerged(ctx context.Context, db DBTX, ownerID, sourceCanonicalID, ta
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	return nil
+	_, err = db.Exec(ctx, `
+		UPDATE goods SET updated_at = now()
+		WHERE owner_id = $1 AND id = $2 AND `+sqlActive+`
+	`, ownerID, targetCanonicalID)
+	return err
+}
+
+// TransferCategoryOnGoodMerge copies category from source to target when target has none.
+func TransferCategoryOnGoodMerge(ctx context.Context, db DBTX, ownerID, sourceCanonicalID, targetCanonicalID uuid.UUID) error {
+	_, err := db.Exec(ctx, `
+		UPDATE goods tgt
+		SET category_id = src.category_id,
+		    updated_at = now()
+		FROM goods src
+		WHERE src.owner_id = $1 AND src.id = $2
+		  AND tgt.owner_id = $1 AND tgt.id = $3
+		  AND tgt.merged_into IS NULL
+		  AND src.deleted_at IS NULL
+		  AND tgt.deleted_at IS NULL
+		  AND src.category_id IS NOT NULL
+		  AND tgt.category_id IS NULL
+	`, ownerID, sourceCanonicalID, targetCanonicalID)
+	return err
 }
 
 func RepointListItemsGood(ctx context.Context, db DBTX, ownerID, fromGoodID, toGoodID uuid.UUID) error {
@@ -112,10 +142,11 @@ func SearchCanonicalGoods(ctx context.Context, db DBTX, ownerID uuid.UUID, norma
 		limit = 100
 	}
 	rows, err := db.Query(ctx, `
-		SELECT id, owner_id, name, normalized_name, merged_into, created_by, created_at, updated_at
+		SELECT id, owner_id, category_id, name, normalized_name, merged_into, created_by, created_at, updated_at
 		FROM goods
 		WHERE owner_id = $1
 		  AND merged_into IS NULL
+		  AND `+sqlActive+`
 		  AND ($2 = '' OR normalized_name LIKE '%' || $2 || '%')
 		ORDER BY normalized_name ASC
 		LIMIT $3
@@ -141,14 +172,38 @@ func ListCanonicalGoodsExclude(ctx context.Context, db DBTX, ownerID uuid.UUID, 
 		limit = 50
 	}
 	rows, err := db.Query(ctx, `
-		SELECT id, owner_id, name, normalized_name, merged_into, created_by, created_at, updated_at
+		SELECT id, owner_id, category_id, name, normalized_name, merged_into, created_by, created_at, updated_at
 		FROM goods
 		WHERE owner_id = $1
 		  AND merged_into IS NULL
+		  AND `+sqlActive+`
 		  AND id <> $2
 		ORDER BY normalized_name ASC
 		LIMIT $3
 	`, ownerID, exclude, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.Good
+	for rows.Next() {
+		g, err := scanGood(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *g)
+	}
+	return out, rows.Err()
+}
+
+func ListGoodsSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since time.Time) ([]models.Good, error) {
+	rows, err := db.Query(ctx, `
+		SELECT id, owner_id, category_id, name, normalized_name, merged_into, created_by, created_at, updated_at
+		FROM goods
+		WHERE owner_id = $1 AND updated_at > $2 AND `+sqlActive+`
+		ORDER BY updated_at ASC, id ASC
+	`, ownerID, since)
 	if err != nil {
 		return nil, err
 	}

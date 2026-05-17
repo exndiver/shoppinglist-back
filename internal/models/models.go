@@ -10,10 +10,20 @@ import (
 type Good struct {
 	ID             uuid.UUID
 	OwnerID        uuid.UUID
+	CategoryID     *uuid.UUID
 	Name           string
 	NormalizedName string
 	MergedInto     *uuid.UUID
 	CreatedBy      *string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type Category struct {
+	ID             uuid.UUID
+	OwnerID        uuid.UUID
+	Name           string
+	NormalizedName string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
@@ -84,4 +94,9 @@ type PriceSnapshot struct {
 	Price    float64
 	PackSize *float64
 	Unit     *string
+}
+
+type GoodIdentity struct {
+	Source     string
+	ExternalID string
 }

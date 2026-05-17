@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/exndiver/shopping-backend/internal/models"
 	"github.com/exndiver/shopping-backend/internal/normalize"
@@ -52,4 +53,8 @@ func (s *Service) UpsertStore(ctx context.Context, ownerID, id uuid.UUID, name s
 func (s *Service) SearchStores(ctx context.Context, ownerID uuid.UUID, q string) ([]models.Store, error) {
 	nq := normalize.Name(q)
 	return repository.SearchCanonicalStores(ctx, s.Pool, ownerID, nq, 200)
+}
+
+func (s *Service) ListStoresSince(ctx context.Context, ownerID uuid.UUID, since time.Time) ([]models.Store, error) {
+	return repository.ListStoresSince(ctx, s.Pool, ownerID, since)
 }

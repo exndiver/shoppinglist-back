@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/exndiver/shopping-backend/internal/models"
 	"github.com/google/uuid"
@@ -68,8 +69,10 @@ func InsertListItem(ctx context.Context, db DBTX, it models.ListItem) error {
 
 func GetListItem(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.ListItem, error) {
 	row := db.QueryRow(ctx, `
-		SELECT id, owner_id, list_id, good_id, offer_id, quantity, price_snapshot, is_purchased, created_by, created_at, updated_at
-		FROM list_items WHERE owner_id = $1 AND id = $2
+		SELECT li.id, li.owner_id, li.list_id, li.good_id, li.offer_id, li.quantity, li.price_snapshot, li.is_purchased, li.created_by, li.created_at, li.updated_at
+		FROM list_items li
+		INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.owner_id = li.owner_id AND sl.deleted_at IS NULL
+		WHERE li.owner_id = $1 AND li.id = $2
 	`, ownerID, id)
 	it, err := scanListItem(row)
 	if err == pgx.ErrNoRows {
@@ -80,10 +83,11 @@ func GetListItem(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.L
 
 func ListItemsByList(ctx context.Context, db DBTX, ownerID, listID uuid.UUID) ([]models.ListItem, error) {
 	rows, err := db.Query(ctx, `
-		SELECT id, owner_id, list_id, good_id, offer_id, quantity, price_snapshot, is_purchased, created_by, created_at, updated_at
-		FROM list_items
-		WHERE owner_id = $1 AND list_id = $2
-		ORDER BY created_at ASC, id ASC
+		SELECT li.id, li.owner_id, li.list_id, li.good_id, li.offer_id, li.quantity, li.price_snapshot, li.is_purchased, li.created_by, li.created_at, li.updated_at
+		FROM list_items li
+		INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.owner_id = li.owner_id AND sl.deleted_at IS NULL
+		WHERE li.owner_id = $1 AND li.list_id = $2
+		ORDER BY li.created_at ASC, li.id ASC
 	`, ownerID, listID)
 	if err != nil {
 		return nil, err
@@ -146,6 +150,10 @@ func PatchListItem(ctx context.Context, db DBTX, ownerID, id uuid.UUID, patch Li
 		    offer_id = $5,
 		    updated_at = now()
 		WHERE owner_id = $1 AND id = $2
+		  AND EXISTS (
+		    SELECT 1 FROM shopping_lists sl
+		    WHERE sl.id = list_items.list_id AND sl.owner_id = list_items.owner_id AND sl.deleted_at IS NULL
+		  )
 	`, ownerID, id, q, ip, offerArg)
 	if err != nil {
 		return err
@@ -154,4 +162,28 @@ func PatchListItem(ctx context.Context, db DBTX, ownerID, id uuid.UUID, patch Li
 		return ErrNotFound
 	}
 	return nil
+}
+
+func ListListItemsSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since time.Time) ([]models.ListItem, error) {
+	rows, err := db.Query(ctx, `
+		SELECT li.id, li.owner_id, li.list_id, li.good_id, li.offer_id, li.quantity, li.price_snapshot, li.is_purchased, li.created_by, li.created_at, li.updated_at
+		FROM list_items li
+		INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.owner_id = li.owner_id AND sl.deleted_at IS NULL
+		WHERE li.owner_id = $1 AND li.updated_at > $2
+		ORDER BY li.updated_at ASC, li.id ASC
+	`, ownerID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.ListItem
+	for rows.Next() {
+		it, err := scanListItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *it)
+	}
+	return out, rows.Err()
 }

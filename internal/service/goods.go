@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/exndiver/shopping-backend/internal/models"
 	"github.com/exndiver/shopping-backend/internal/normalize"
@@ -19,10 +20,19 @@ type MergeBuckets struct {
 	Others   []models.Good
 }
 
-func (s *Service) UpsertGood(ctx context.Context, ownerID, id uuid.UUID, name string, createdBy *string) (*models.Good, error) {
+func (s *Service) UpsertGood(ctx context.Context, ownerID, id uuid.UUID, categoryID *uuid.UUID, name string, createdBy *string) (*models.Good, error) {
 	n := normalize.Name(name)
 	if n == "" {
 		return nil, ErrBadRequest
+	}
+
+	if categoryID != nil {
+		if _, err := repository.GetCategory(ctx, s.Pool, ownerID, *categoryID); err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return nil, ErrBadRequest // Category not found or doesn't belong to owner
+			}
+			return nil, err
+		}
 	}
 
 	_, err := repository.GetGood(ctx, s.Pool, ownerID, id)
@@ -30,6 +40,7 @@ func (s *Service) UpsertGood(ctx context.Context, ownerID, id uuid.UUID, name st
 		g := models.Good{
 			ID:             id,
 			OwnerID:        ownerID,
+			CategoryID:     categoryID,
 			Name:           strings.TrimSpace(name),
 			NormalizedName: n,
 			CreatedBy:      createdBy,
@@ -50,7 +61,7 @@ func (s *Service) UpsertGood(ctx context.Context, ownerID, id uuid.UUID, name st
 	if err != nil {
 		return nil, err
 	}
-	if err := repository.UpdateGoodCanonical(ctx, s.Pool, ownerID, canon, strings.TrimSpace(name), n, createdBy); err != nil {
+	if err := repository.UpdateGoodCanonical(ctx, s.Pool, ownerID, canon, categoryID, strings.TrimSpace(name), n, createdBy); err != nil {
 		return nil, err
 	}
 	return repository.GetGood(ctx, s.Pool, ownerID, canon)
@@ -67,6 +78,10 @@ func (s *Service) GetGoodCanonical(ctx context.Context, ownerID, id uuid.UUID) (
 func (s *Service) SearchGoods(ctx context.Context, ownerID uuid.UUID, q string) ([]models.Good, error) {
 	nq := normalize.Name(q)
 	return repository.SearchCanonicalGoods(ctx, s.Pool, ownerID, nq, 200)
+}
+
+func (s *Service) ListGoodsSince(ctx context.Context, ownerID uuid.UUID, since time.Time) ([]models.Good, error) {
+	return repository.ListGoodsSince(ctx, s.Pool, ownerID, since)
 }
 
 func (s *Service) MergeCandidates(ctx context.Context, ownerID uuid.UUID, goodID uuid.UUID, q string) (*MergeBuckets, error) {
