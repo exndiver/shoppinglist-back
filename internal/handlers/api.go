@@ -78,16 +78,25 @@ func ptrCreatedBy(r *http.Request) *string {
 }
 
 func (a *API) parseSince(w http.ResponseWriter, r *http.Request, key string) (time.Time, bool) {
-	s := r.URL.Query().Get(key)
-	if s == "" {
-		return time.Time{}, true
+	return a.parseSinceKeys(w, r, key)
+}
+
+// parseSinceKeys parses the first non-empty query param among keys (RFC3339).
+// If all keys are absent, returns zero time and ok=true (full sync).
+func (a *API) parseSinceKeys(w http.ResponseWriter, r *http.Request, keys ...string) (time.Time, bool) {
+	for _, key := range keys {
+		s := strings.TrimSpace(r.URL.Query().Get(key))
+		if s == "" {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			httpx.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid timestamp format, use RFC3339")
+			return time.Time{}, false
+		}
+		return t, true
 	}
-	t, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		httpx.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid timestamp format, use RFC3339")
-		return time.Time{}, false
-	}
-	return t, true
+	return time.Time{}, true
 }
 
 type goodUpsertReq struct {
@@ -383,11 +392,6 @@ func (a *API) getOffers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if since.IsZero() {
-		httpx.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "updated_since is required for offers list")
-		return
-	}
-
 	items, err := a.svc.ListOffersSince(r.Context(), ownerID, since)
 	if err != nil {
 		writeSvcErr(w, err)
@@ -573,13 +577,8 @@ func (a *API) getPriceRecords(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	since, ok := a.parseSince(w, r, "since")
+	since, ok := a.parseSinceKeys(w, r, "since", "updated_since")
 	if !ok {
-		return
-	}
-
-	if since.IsZero() {
-		httpx.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "since is required for price records")
 		return
 	}
 
@@ -859,11 +858,6 @@ func (a *API) getListItems(w http.ResponseWriter, r *http.Request) {
 
 	since, ok := a.parseSince(w, r, "updated_since")
 	if !ok {
-		return
-	}
-
-	if since.IsZero() {
-		httpx.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "updated_since is required for list items")
 		return
 	}
 

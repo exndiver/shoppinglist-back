@@ -165,13 +165,25 @@ func PatchListItem(ctx context.Context, db DBTX, ownerID, id uuid.UUID, patch Li
 }
 
 func ListListItemsSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since time.Time) ([]models.ListItem, error) {
-	rows, err := db.Query(ctx, `
-		SELECT li.id, li.owner_id, li.list_id, li.good_id, li.offer_id, li.quantity, li.price_snapshot, li.is_purchased, li.created_by, li.created_at, li.updated_at
-		FROM list_items li
-		INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.owner_id = li.owner_id AND sl.deleted_at IS NULL
-		WHERE li.owner_id = $1 AND li.updated_at > $2
-		ORDER BY li.updated_at ASC, li.id ASC
-	`, ownerID, since)
+	var rows pgx.Rows
+	var err error
+	if since.IsZero() {
+		rows, err = db.Query(ctx, `
+			SELECT li.id, li.owner_id, li.list_id, li.good_id, li.offer_id, li.quantity, li.price_snapshot, li.is_purchased, li.created_by, li.created_at, li.updated_at
+			FROM list_items li
+			INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.owner_id = li.owner_id AND sl.deleted_at IS NULL
+			WHERE li.owner_id = $1
+			ORDER BY li.updated_at ASC, li.id ASC
+		`, ownerID)
+	} else {
+		rows, err = db.Query(ctx, `
+			SELECT li.id, li.owner_id, li.list_id, li.good_id, li.offer_id, li.quantity, li.price_snapshot, li.is_purchased, li.created_by, li.created_at, li.updated_at
+			FROM list_items li
+			INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.owner_id = li.owner_id AND sl.deleted_at IS NULL
+			WHERE li.owner_id = $1 AND li.updated_at > $2
+			ORDER BY li.updated_at ASC, li.id ASC
+		`, ownerID, since)
+	}
 	if err != nil {
 		return nil, err
 	}

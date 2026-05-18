@@ -162,13 +162,25 @@ func PricesLikelyEqual(a, b *models.PriceRecord) bool {
 }
 
 func ListPriceRecordsSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since time.Time) ([]models.PriceRecord, error) {
-	rows, err := db.Query(ctx, `
-		SELECT pr.id, pr.owner_id, pr.offer_id, pr.price, pr.pack_size, pr.unit, pr.recorded_at, pr.recorded_by, pr.created_at
-		FROM price_records pr
-		INNER JOIN offers o ON o.id = pr.offer_id AND o.owner_id = pr.owner_id AND o.deleted_at IS NULL
-		WHERE pr.owner_id = $1 AND pr.created_at > $2
-		ORDER BY pr.created_at ASC, pr.id ASC
-	`, ownerID, since)
+	var rows pgx.Rows
+	var err error
+	if since.IsZero() {
+		rows, err = db.Query(ctx, `
+			SELECT pr.id, pr.owner_id, pr.offer_id, pr.price, pr.pack_size, pr.unit, pr.recorded_at, pr.recorded_by, pr.created_at
+			FROM price_records pr
+			INNER JOIN offers o ON o.id = pr.offer_id AND o.owner_id = pr.owner_id AND o.deleted_at IS NULL
+			WHERE pr.owner_id = $1
+			ORDER BY pr.created_at ASC, pr.id ASC
+		`, ownerID)
+	} else {
+		rows, err = db.Query(ctx, `
+			SELECT pr.id, pr.owner_id, pr.offer_id, pr.price, pr.pack_size, pr.unit, pr.recorded_at, pr.recorded_by, pr.created_at
+			FROM price_records pr
+			INNER JOIN offers o ON o.id = pr.offer_id AND o.owner_id = pr.owner_id AND o.deleted_at IS NULL
+			WHERE pr.owner_id = $1 AND pr.created_at > $2
+			ORDER BY pr.created_at ASC, pr.id ASC
+		`, ownerID, since)
+	}
 	if err != nil {
 		return nil, err
 	}

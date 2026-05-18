@@ -86,7 +86,7 @@ Upsert категории по `id`.
 
 ### `GET /categories?updated_since=...`
 
-Инкрементальный pull: `updated_at > updated_since`, порядок `updated_at ASC, id ASC`.
+Query **`updated_since`** (RFC3339, **необязателен**): если не передан — полная выдача категорий владельца; если передан — только записи с `updated_at` **строго больше** `updated_since`. Порядок: `updated_at ASC, id ASC`.
 
 **Ответ `200`:** массив полных объектов категории.
 
@@ -134,7 +134,7 @@ Upsert категории по `id`.
 
 ### `GET /goods?updated_since=...`
 
-Инкрементальный pull всех изменённых товаров (включая с `merged_into`), порядок `updated_at ASC, id ASC`.
+Query **`updated_since`** (необязателен): без параметра — полный snapshot канонических товаров (поиск `q` работает отдельно); с параметром — `updated_at > updated_since` (включая записи с `merged_into`). Порядок: `updated_at ASC, id ASC`.
 
 ---
 
@@ -251,7 +251,7 @@ Upsert магазина.
 
 ### `GET /stores?updated_since=...`
 
-Инкрементальный pull магазинов.
+Query **`updated_since`** (необязателен): без параметра — все магазины владельца; с параметром — `updated_at > updated_since`.
 
 ---
 
@@ -275,13 +275,15 @@ Upsert оффера «товар в магазине» (идемпотентно
 
 ### `GET /offers?updated_since=...`
 
-Инкрементальный pull офферов. В ответе `good_id` и `store_id` — **канонические** UUID.
+Query **`updated_since`** (необязателен): без параметра — все офферы владельца (`200` + массив, может быть `[]`); с параметром — `updated_at > updated_since`. В ответе `good_id` и `store_id` — **канонические** UUID. Порядок: `updated_at ASC, id ASC`.
 
 ---
 
 ### `GET /price-records?since=...`
 
-Append-only поток цен: `created_at > since`, порядок `created_at ASC, id ASC`. Параметр **`since`** (RFC3339), обязателен.
+Append-only поток цен владельца.
+
+Query **`since`** или **`updated_since`** (RFC3339, **необязательны**, alias): без параметра — все записи; с параметром — `created_at` **строго больше** watermark. Порядок: `created_at ASC, id ASC`.
 
 **Ответ `200`:** массив записей (как `POST /price-records`).
 
@@ -354,7 +356,7 @@ Upsert списка.
 
 Без query — все списки владельца.
 
-С `updated_since` — инкрементальный pull, `ORDER BY updated_at ASC, id ASC`.
+Query **`updated_since`** (необязателен): без параметра — все списки; с параметром — `updated_at > updated_since`.
 
 **Ответ `200`:** массив объектов списка (как выше).
 
@@ -362,7 +364,7 @@ Upsert списка.
 
 ### `GET /list-items?updated_since=...`
 
-Инкрементальный pull позиций. В ответе `good_id` — **канонический**.
+Query **`updated_since`** (необязателен): без параметра — все позиции активных списков владельца; с параметром — `updated_at > updated_since`. В ответе `good_id` — **канонический**. Порядок: `updated_at ASC, id ASC`.
 
 ---
 
@@ -461,6 +463,8 @@ Upsert списка.
 ---
 
 ## Синхронизация
+
+**Bulk GET (единый контракт):** на `GET /categories`, `/goods`, `/stores`, `/lists`, `/offers`, `/list-items` и `GET /price-records` отсутствие `updated_since` / `since` означает **полный snapshot** для текущего `owner_uuid`; наличие параметра — **инкремент** (`updated_at` или `created_at` **строго >** переданного времени). Невалидная дата → `400`, отсутствие параметра → **не** `400`.
 
 Рекомендуемый порядок pull на клиенте:
 

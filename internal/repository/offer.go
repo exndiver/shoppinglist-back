@@ -139,12 +139,23 @@ func ListOffersForGood(ctx context.Context, db DBTX, ownerID, goodID uuid.UUID) 
 
 
 func ListOffersSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since time.Time) ([]models.Offer, error) {
-	rows, err := db.Query(ctx, `
-		SELECT id, owner_id, good_id, store_id, created_by, created_at, updated_at
-		FROM offers
-		WHERE owner_id = $1 AND updated_at > $2 AND `+sqlActive+`
-		ORDER BY updated_at ASC, id ASC
-	`, ownerID, since)
+	var rows pgx.Rows
+	var err error
+	if since.IsZero() {
+		rows, err = db.Query(ctx, `
+			SELECT id, owner_id, good_id, store_id, created_by, created_at, updated_at
+			FROM offers
+			WHERE owner_id = $1 AND `+sqlActive+`
+			ORDER BY updated_at ASC, id ASC
+		`, ownerID)
+	} else {
+		rows, err = db.Query(ctx, `
+			SELECT id, owner_id, good_id, store_id, created_by, created_at, updated_at
+			FROM offers
+			WHERE owner_id = $1 AND updated_at > $2 AND `+sqlActive+`
+			ORDER BY updated_at ASC, id ASC
+		`, ownerID, since)
+	}
 	if err != nil {
 		return nil, err
 	}
