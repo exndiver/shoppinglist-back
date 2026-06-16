@@ -50,38 +50,42 @@ func GetStore(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.Stor
 	return s, err
 }
 
-func InsertStore(ctx context.Context, db DBTX, s models.Store) error {
+func InsertStoreReturning(ctx context.Context, db DBTX, s models.Store) (*models.Store, error) {
 	var cb any
 	if s.CreatedBy != nil {
 		cb = *s.CreatedBy
 	}
-	_, err := db.Exec(ctx, `
+	row := db.QueryRow(ctx, `
 		INSERT INTO stores (id, owner_id, name, normalized_name, merged_into, created_by)
 		VALUES ($1, $2, $3, $4, NULL, $5)
+		RETURNING id, owner_id, name, normalized_name, merged_into, created_by, created_at, updated_at
 	`, s.ID, s.OwnerID, s.Name, s.NormalizedName, cb)
-	return err
+	out, err := scanStore(row)
+	if err == pgx.ErrNoRows {
+		return nil, ErrNotFound
+	}
+	return out, err
 }
 
-func UpdateStoreCanonical(ctx context.Context, db DBTX, ownerID, canonicalID uuid.UUID, name, normalized string, createdBy *string) error {
+func UpdateStoreCanonicalReturning(ctx context.Context, db DBTX, ownerID, canonicalID uuid.UUID, name, normalized string, createdBy *string) (*models.Store, error) {
 	var cb any
 	if createdBy != nil {
 		cb = *createdBy
 	}
-	tag, err := db.Exec(ctx, `
+	row := db.QueryRow(ctx, `
 		UPDATE stores
-		SET name = $3,
+		SET name            = $3,
 		    normalized_name = $4,
-		    updated_at = now(),
-		    created_by = COALESCE($5, created_by)
+		    updated_at      = now(),
+		    created_by      = COALESCE($5, created_by)
 		WHERE owner_id = $1 AND id = $2 AND merged_into IS NULL AND `+sqlActive+`
+		RETURNING id, owner_id, name, normalized_name, merged_into, created_by, created_at, updated_at
 	`, ownerID, canonicalID, name, normalized, cb)
-	if err != nil {
-		return err
+	out, err := scanStore(row)
+	if err == pgx.ErrNoRows {
+		return nil, ErrNotFound
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return out, err
 }
 
 func SearchCanonicalStores(ctx context.Context, db DBTX, ownerID uuid.UUID, normalizedContains string, limit int) ([]models.Store, error) {

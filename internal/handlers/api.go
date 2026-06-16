@@ -222,12 +222,19 @@ func (a *API) getMergeCandidates(w http.ResponseWriter, r *http.Request) {
 		return out
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"exact":    mapSnippets(buckets.Exact),
-		"prefix":   mapSnippets(buckets.Prefix),
-		"contains": mapSnippets(buckets.Contains),
-		"others":   mapSnippets(buckets.Others),
+	httpx.WriteJSON(w, http.StatusOK, mergeCandidatesResp{
+		Exact:    mapSnippets(buckets.Exact),
+		Prefix:   mapSnippets(buckets.Prefix),
+		Contains: mapSnippets(buckets.Contains),
+		Others:   mapSnippets(buckets.Others),
 	})
+}
+
+type mergeCandidatesResp struct {
+	Exact    []goodSnippet `json:"exact"`
+	Prefix   []goodSnippet `json:"prefix"`
+	Contains []goodSnippet `json:"contains"`
+	Others   []goodSnippet `json:"others"`
 }
 
 type goodSnippet struct {
@@ -370,14 +377,25 @@ func (a *API) postOffer(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, offerRespFrom(*o))
 }
 
-func offerRespFrom(o models.Offer) map[string]any {
-	return map[string]any{
-		"id":         o.ID,
-		"owner_id":   o.OwnerID,
-		"good_id":    o.GoodID,
-		"store_id":   o.StoreID,
-		"created_at": o.CreatedAt,
-		"updated_at": o.UpdatedAt,
+type offerResp struct {
+	ID        uuid.UUID  `json:"id"`
+	OwnerID   uuid.UUID  `json:"owner_id"`
+	GoodID    uuid.UUID  `json:"good_id"`
+	StoreID   uuid.UUID  `json:"store_id"`
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}
+
+func offerRespFrom(o models.Offer) offerResp {
+	return offerResp{
+		ID:        o.ID,
+		OwnerID:   o.OwnerID,
+		GoodID:    o.GoodID,
+		StoreID:   o.StoreID,
+		DeletedAt: o.DeletedAt,
+		CreatedAt: o.CreatedAt,
+		UpdatedAt: o.UpdatedAt,
 	}
 }
 
@@ -397,7 +415,7 @@ func (a *API) getOffers(w http.ResponseWriter, r *http.Request) {
 		writeSvcErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(items))
+	out := make([]offerResp, 0, len(items))
 	for _, o := range items {
 		out = append(out, offerRespFrom(o))
 	}
@@ -418,12 +436,9 @@ func (a *API) getGoodIdentities(w http.ResponseWriter, r *http.Request) {
 		writeSvcErr(w, err)
 		return
 	}
-	out := make([]map[string]string, 0, len(items))
+	out := make([]identityResp, 0, len(items))
 	for _, it := range items {
-		out = append(out, map[string]string{
-			"source":      it.Source,
-			"external_id": it.ExternalID,
-		})
+		out = append(out, identityResp{Source: it.Source, ExternalID: it.ExternalID})
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
@@ -505,22 +520,28 @@ func (a *API) postPriceRecord(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, priceRecordRespFrom(*pr))
 }
 
-func priceRecordRespFrom(pr models.PriceRecord) map[string]any {
-	out := map[string]any{
-		"id":          pr.ID,
-		"owner_id":    pr.OwnerID,
-		"offer_id":    pr.OfferID,
-		"price":       pr.Price,
-		"recorded_at": pr.RecordedAt,
-		"created_at":  pr.CreatedAt,
+type priceRecordResp struct {
+	ID         uuid.UUID  `json:"id"`
+	OwnerID    uuid.UUID  `json:"owner_id"`
+	OfferID    uuid.UUID  `json:"offer_id"`
+	Price      float64    `json:"price"`
+	PackSize   *float64   `json:"pack_size,omitempty"`
+	Unit       *string    `json:"unit,omitempty"`
+	RecordedAt time.Time  `json:"recorded_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+func priceRecordRespFrom(pr models.PriceRecord) priceRecordResp {
+	return priceRecordResp{
+		ID:         pr.ID,
+		OwnerID:    pr.OwnerID,
+		OfferID:    pr.OfferID,
+		Price:      pr.Price,
+		PackSize:   pr.PackSize,
+		Unit:       pr.Unit,
+		RecordedAt: pr.RecordedAt,
+		CreatedAt:  pr.CreatedAt,
 	}
-	if pr.PackSize != nil {
-		out["pack_size"] = *pr.PackSize
-	}
-	if pr.Unit != nil {
-		out["unit"] = *pr.Unit
-	}
-	return out
 }
 
 func (a *API) getOfferPrices(w http.ResponseWriter, r *http.Request) {
@@ -537,7 +558,7 @@ func (a *API) getOfferPrices(w http.ResponseWriter, r *http.Request) {
 		writeSvcErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(items))
+	out := make([]priceRecordResp, 0, len(items))
 	for _, pr := range items {
 		out = append(out, priceRecordRespFrom(pr))
 	}
@@ -559,16 +580,20 @@ func (a *API) getOfferLatestPrice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ok {
-		httpx.WriteJSON(w, http.StatusOK, map[string]any{"latest_price": nil})
+		httpx.WriteJSON(w, http.StatusOK, latestPriceResp{})
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"latest_price": priceSnapDTO{
+	httpx.WriteJSON(w, http.StatusOK, latestPriceResp{
+		LatestPrice: &priceSnapDTO{
 			Price:    pr.Price,
 			PackSize: pr.PackSize,
 			Unit:     pr.Unit,
 		},
 	})
+}
+
+type latestPriceResp struct {
+	LatestPrice *priceSnapDTO `json:"latest_price"`
 }
 
 func (a *API) getPriceRecords(w http.ResponseWriter, r *http.Request) {
@@ -587,7 +612,7 @@ func (a *API) getPriceRecords(w http.ResponseWriter, r *http.Request) {
 		writeSvcErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(items))
+	out := make([]priceRecordResp, 0, len(items))
 	for _, pr := range items {
 		out = append(out, priceRecordRespFrom(pr))
 	}
@@ -718,13 +743,56 @@ func (a *API) postUpsertList(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, listRespFrom(*l))
 }
 
-func listRespFrom(l models.ShoppingList) map[string]any {
-	return map[string]any{
-		"id":         l.ID,
-		"owner_id":   l.OwnerID,
-		"name":       l.Name,
-		"created_at": l.CreatedAt,
-		"updated_at": l.UpdatedAt,
+type listResp struct {
+	ID        uuid.UUID `json:"id"`
+	OwnerID   uuid.UUID `json:"owner_id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type listDetailResp struct {
+	listResp
+	Items []listItemResp `json:"items"`
+}
+
+type listItemResp struct {
+	ID            uuid.UUID  `json:"id"`
+	OwnerID       uuid.UUID  `json:"owner_id"`
+	ListID        uuid.UUID  `json:"list_id"`
+	GoodID        uuid.UUID  `json:"good_id"`
+	OfferID       *uuid.UUID `json:"offer_id,omitempty"`
+	Quantity      float64    `json:"quantity"`
+	PriceSnapshot *float64   `json:"price_snapshot,omitempty"`
+	IsPurchased   bool       `json:"is_purchased"`
+	GoodName      string     `json:"good_name"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
+func listItemRespFrom(it service.ListItemDetail) listItemResp {
+	return listItemResp{
+		ID:            it.ID,
+		OwnerID:       it.OwnerID,
+		ListID:        it.ListID,
+		GoodID:        it.GoodID,
+		OfferID:       it.OfferID,
+		Quantity:      it.Quantity,
+		PriceSnapshot: it.PriceSnapshot,
+		IsPurchased:   it.IsPurchased,
+		GoodName:      it.GoodName,
+		CreatedAt:     it.CreatedAt,
+		UpdatedAt:     it.UpdatedAt,
+	}
+}
+
+func listRespFrom(l models.ShoppingList) listResp {
+	return listResp{
+		ID:        l.ID,
+		OwnerID:   l.OwnerID,
+		Name:      l.Name,
+		CreatedAt: l.CreatedAt,
+		UpdatedAt: l.UpdatedAt,
 	}
 }
 
@@ -745,7 +813,7 @@ func (a *API) getLists(w http.ResponseWriter, r *http.Request) {
 			writeSvcErr(w, err)
 			return
 		}
-		out := make([]map[string]any, 0, len(items))
+		out := make([]listResp, 0, len(items))
 		for _, l := range items {
 			out = append(out, listRespFrom(l))
 		}
@@ -758,7 +826,7 @@ func (a *API) getLists(w http.ResponseWriter, r *http.Request) {
 		writeSvcErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(items))
+	out := make([]listResp, 0, len(items))
 	for _, l := range items {
 		out = append(out, listRespFrom(l))
 	}
@@ -780,35 +848,13 @@ func (a *API) getList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items := make([]map[string]any, 0, len(detail.Items))
+	items := make([]listItemResp, 0, len(detail.Items))
 	for _, it := range detail.Items {
-		m := map[string]any{
-			"id":           it.ID,
-			"owner_id":     it.OwnerID,
-			"list_id":      it.ListID,
-			"good_id":      it.GoodID,
-			"quantity":     it.Quantity,
-			"is_purchased": it.IsPurchased,
-			"good_name":    it.GoodName,
-			"created_at":   it.CreatedAt,
-			"updated_at":   it.UpdatedAt,
-		}
-		if it.OfferID != nil {
-			m["offer_id"] = *it.OfferID
-		}
-		if it.PriceSnapshot != nil {
-			m["price_snapshot"] = *it.PriceSnapshot
-		}
-		items = append(items, m)
+		items = append(items, listItemRespFrom(it))
 	}
-
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"id":         detail.List.ID,
-		"owner_id":   detail.List.OwnerID,
-		"name":       detail.List.Name,
-		"created_at": detail.List.CreatedAt,
-		"updated_at": detail.List.UpdatedAt,
-		"items":      items,
+	httpx.WriteJSON(w, http.StatusOK, listDetailResp{
+		listResp: listRespFrom(detail.List),
+		Items:    items,
 	})
 }
 
@@ -835,19 +881,7 @@ func (a *API) postListItem(w http.ResponseWriter, r *http.Request) {
 		writeSvcErr(w, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"id":             it.ID,
-		"owner_id":       it.OwnerID,
-		"list_id":        it.ListID,
-		"good_id":        it.GoodID,
-		"offer_id":       it.OfferID,
-		"quantity":       it.Quantity,
-		"price_snapshot": it.PriceSnapshot,
-		"is_purchased":   it.IsPurchased,
-		"good_name":      it.GoodName,
-		"created_at":     it.CreatedAt,
-		"updated_at":     it.UpdatedAt,
-	})
+	httpx.WriteJSON(w, http.StatusOK, listItemRespFrom(*it))
 }
 
 func (a *API) getListItems(w http.ResponseWriter, r *http.Request) {
@@ -866,20 +900,9 @@ func (a *API) getListItems(w http.ResponseWriter, r *http.Request) {
 		writeSvcErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(items))
+	out := make([]listItemResp, 0, len(items))
 	for _, it := range items {
-		out = append(out, map[string]any{
-			"id":             it.ID,
-			"owner_id":       it.OwnerID,
-			"list_id":        it.ListID,
-			"good_id":        it.GoodID,
-			"offer_id":       it.OfferID,
-			"quantity":       it.Quantity,
-			"price_snapshot": it.PriceSnapshot,
-			"is_purchased":   it.IsPurchased,
-			"created_at":     it.CreatedAt,
-			"updated_at":     it.UpdatedAt,
-		})
+		out = append(out, listItemRespFrom(service.ListItemDetail{ListItem: it}))
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
@@ -941,19 +964,12 @@ func (a *API) patchListItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"id":             it.ID,
-		"owner_id":       it.OwnerID,
-		"list_id":        it.ListID,
-		"good_id":        it.GoodID,
-		"offer_id":       it.OfferID,
-		"quantity":       it.Quantity,
-		"price_snapshot": it.PriceSnapshot,
-		"is_purchased":   it.IsPurchased,
-		"good_name":      it.GoodName,
-		"created_at":     it.CreatedAt,
-		"updated_at":     it.UpdatedAt,
-	})
+	httpx.WriteJSON(w, http.StatusOK, listItemRespFrom(*it))
+}
+
+type identityResp struct {
+	Source     string `json:"source"`
+	ExternalID string `json:"external_id"`
 }
 
 type identityReq struct {
@@ -982,6 +998,17 @@ func (a *API) postGoodIdentity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type syncBatchResp struct {
+	Categories   []categoryResp    `json:"categories"`
+	Goods        []goodResp        `json:"goods"`
+	Stores       []storeResp       `json:"stores"`
+	Offers       []offerResp       `json:"offers"`
+	Lists        []listResp        `json:"lists"`
+	ListItems    []listItemResp    `json:"list_items"`
+	PriceRecords []priceRecordResp `json:"price_records"`
+	ServerTime   time.Time         `json:"server_time"`
 }
 
 func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
@@ -1044,46 +1071,35 @@ func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
 	for _, s := range stores {
 		respStores = append(respStores, storeRespFrom(s))
 	}
-	respOffers := make([]map[string]any, 0, len(offers))
+	respOffers := make([]offerResp, 0, len(offers))
 	for _, o := range offers {
 		respOffers = append(respOffers, offerRespFrom(o))
 	}
-	respLists := make([]map[string]any, 0, len(lists))
+	respLists := make([]listResp, 0, len(lists))
 	for _, l := range lists {
 		respLists = append(respLists, listRespFrom(l))
 	}
-	respListItems := make([]map[string]any, 0, len(listItems))
+	respListItems := make([]listItemResp, 0, len(listItems))
 	for _, it := range listItems {
-		respListItems = append(respListItems, map[string]any{
-			"id":             it.ID,
-			"owner_id":       it.OwnerID,
-			"list_id":        it.ListID,
-			"good_id":        it.GoodID,
-			"offer_id":       it.OfferID,
-			"quantity":       it.Quantity,
-			"price_snapshot": it.PriceSnapshot,
-			"is_purchased":   it.IsPurchased,
-			"created_at":     it.CreatedAt,
-			"updated_at":     it.UpdatedAt,
-		})
+		respListItems = append(respListItems, listItemRespFrom(service.ListItemDetail{ListItem: it}))
 	}
 	respCategories := make([]categoryResp, 0, len(categories))
 	for _, c := range categories {
 		respCategories = append(respCategories, categoryRespFrom(c))
 	}
-	respPrices := make([]map[string]any, 0, len(prices))
+	respPrices := make([]priceRecordResp, 0, len(prices))
 	for _, pr := range prices {
 		respPrices = append(respPrices, priceRecordRespFrom(pr))
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"categories":    respCategories,
-		"goods":         respGoods,
-		"stores":        respStores,
-		"offers":        respOffers,
-		"lists":         respLists,
-		"list_items":    respListItems,
-		"price_records": respPrices,
-		"server_time":   time.Now().UTC(),
+	httpx.WriteJSON(w, http.StatusOK, syncBatchResp{
+		Categories:  respCategories,
+		Goods:       respGoods,
+		Stores:      respStores,
+		Offers:      respOffers,
+		Lists:       respLists,
+		ListItems:   respListItems,
+		PriceRecords: respPrices,
+		ServerTime:  time.Now().UTC(),
 	})
 }

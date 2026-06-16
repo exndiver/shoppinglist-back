@@ -2,13 +2,11 @@ package service
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
 	"github.com/exndiver/shopping-backend/internal/models"
 	"github.com/exndiver/shopping-backend/internal/normalize"
-	"github.com/exndiver/shopping-backend/internal/pgutil"
 	"github.com/exndiver/shopping-backend/internal/repository"
 	"github.com/google/uuid"
 )
@@ -28,15 +26,15 @@ func (s *Service) UpsertGood(ctx context.Context, ownerID, id uuid.UUID, categor
 
 	if categoryID != nil {
 		if _, err := repository.GetCategory(ctx, s.Pool, ownerID, *categoryID); err != nil {
-			if errors.Is(err, repository.ErrNotFound) {
-				return nil, ErrBadRequest // Category not found or doesn't belong to owner
+			if isNotFound(err) {
+				return nil, ErrBadRequest
 			}
 			return nil, err
 		}
 	}
 
-	_, err := repository.GetGood(ctx, s.Pool, ownerID, id)
-	if errors.Is(err, repository.ErrNotFound) {
+	existing, err := repository.GetGood(ctx, s.Pool, ownerID, id)
+	if isNotFound(err) {
 		g := models.Good{
 			ID:             id,
 			OwnerID:        ownerID,
@@ -45,26 +43,18 @@ func (s *Service) UpsertGood(ctx context.Context, ownerID, id uuid.UUID, categor
 			NormalizedName: n,
 			CreatedBy:      createdBy,
 		}
-		if err := repository.InsertGood(ctx, s.Pool, g); err != nil {
-			if pgutil.IsUniqueViolation(err) {
-				return nil, ErrConflict
-			}
-			return nil, err
-		}
-		return repository.GetGood(ctx, s.Pool, ownerID, id)
+		return repository.InsertGoodReturning(ctx, s.Pool, g)
 	}
 	if err != nil {
 		return nil, err
 	}
+	_ = existing
 
 	canon, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, id)
 	if err != nil {
 		return nil, err
 	}
-	if err := repository.UpdateGoodCanonical(ctx, s.Pool, ownerID, canon, categoryID, strings.TrimSpace(name), n, createdBy); err != nil {
-		return nil, err
-	}
-	return repository.GetGood(ctx, s.Pool, ownerID, canon)
+	return repository.UpdateGoodCanonicalReturning(ctx, s.Pool, ownerID, canon, categoryID, strings.TrimSpace(name), n, createdBy)
 }
 
 func (s *Service) GetGoodCanonical(ctx context.Context, ownerID, id uuid.UUID) (*models.Good, error) {

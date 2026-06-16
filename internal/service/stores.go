@@ -2,13 +2,11 @@ package service
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
 	"github.com/exndiver/shopping-backend/internal/models"
 	"github.com/exndiver/shopping-backend/internal/normalize"
-	"github.com/exndiver/shopping-backend/internal/pgutil"
 	"github.com/exndiver/shopping-backend/internal/repository"
 	"github.com/google/uuid"
 )
@@ -20,7 +18,7 @@ func (s *Service) UpsertStore(ctx context.Context, ownerID, id uuid.UUID, name s
 	}
 
 	_, err := repository.GetStore(ctx, s.Pool, ownerID, id)
-	if errors.Is(err, repository.ErrNotFound) {
+	if isNotFound(err) {
 		st := models.Store{
 			ID:             id,
 			OwnerID:        ownerID,
@@ -28,13 +26,7 @@ func (s *Service) UpsertStore(ctx context.Context, ownerID, id uuid.UUID, name s
 			NormalizedName: n,
 			CreatedBy:      createdBy,
 		}
-		if err := repository.InsertStore(ctx, s.Pool, st); err != nil {
-			if pgutil.IsUniqueViolation(err) {
-				return nil, ErrConflict
-			}
-			return nil, err
-		}
-		return repository.GetStore(ctx, s.Pool, ownerID, id)
+		return repository.InsertStoreReturning(ctx, s.Pool, st)
 	}
 	if err != nil {
 		return nil, err
@@ -44,10 +36,7 @@ func (s *Service) UpsertStore(ctx context.Context, ownerID, id uuid.UUID, name s
 	if err != nil {
 		return nil, err
 	}
-	if err := repository.UpdateStoreCanonical(ctx, s.Pool, ownerID, canon, strings.TrimSpace(name), n, createdBy); err != nil {
-		return nil, err
-	}
-	return repository.GetStore(ctx, s.Pool, ownerID, canon)
+	return repository.UpdateStoreCanonicalReturning(ctx, s.Pool, ownerID, canon, strings.TrimSpace(name), n, createdBy)
 }
 
 func (s *Service) SearchStores(ctx context.Context, ownerID uuid.UUID, q string) ([]models.Store, error) {

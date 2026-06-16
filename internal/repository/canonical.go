@@ -5,49 +5,52 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// ResolveGoodCanonical walks the merge chain in a single recursive query.
+// The depth cap (c.depth < 64) terminates the recursion even if the data is
+// accidentally cyclic; each step stays within the owner and excludes soft-deleted rows.
 func ResolveGoodCanonical(ctx context.Context, db DBTX, ownerID, goodID uuid.UUID) (uuid.UUID, error) {
-	cur := goodID
-	for depth := 0; depth < 64; depth++ {
-		var merged pgtype.UUID
-		err := db.QueryRow(ctx, `
-			SELECT merged_into FROM goods
-			WHERE owner_id = $1 AND id = $2 AND `+sqlActive+`
-		`, ownerID, cur).Scan(&merged)
-		if err == pgx.ErrNoRows {
-			return uuid.Nil, ErrNotFound
-		}
-		if err != nil {
-			return uuid.Nil, err
-		}
-		if !merged.Valid {
-			return cur, nil
-		}
-		cur = uuid.UUID(merged.Bytes)
+	const q = `
+		WITH RECURSIVE chain AS (
+			SELECT id, merged_into, 0 AS depth
+			FROM goods
+			WHERE owner_id = $1 AND id = $2 AND ` + sqlActive + `
+			UNION ALL
+			SELECT g.id, g.merged_into, c.depth + 1
+			FROM goods g
+			JOIN chain c ON g.id = c.merged_into
+			WHERE g.owner_id = $1 AND g.` + sqlActiveFrag + ` AND c.depth < 64
+		)
+		SELECT id FROM chain WHERE merged_into IS NULL LIMIT 1
+	`
+	var id uuid.UUID
+	err := db.QueryRow(ctx, q, ownerID, goodID).Scan(&id)
+	if err == pgx.ErrNoRows {
+		return uuid.Nil, ErrNotFound
 	}
-	return uuid.Nil, ErrDepthExceeded
+	return id, err
 }
 
+// ResolveStoreCanonical walks the merge chain in a single recursive query.
 func ResolveStoreCanonical(ctx context.Context, db DBTX, ownerID, storeID uuid.UUID) (uuid.UUID, error) {
-	cur := storeID
-	for depth := 0; depth < 64; depth++ {
-		var merged pgtype.UUID
-		err := db.QueryRow(ctx, `
-			SELECT merged_into FROM stores
-			WHERE owner_id = $1 AND id = $2 AND `+sqlActive+`
-		`, ownerID, cur).Scan(&merged)
-		if err == pgx.ErrNoRows {
-			return uuid.Nil, ErrNotFound
-		}
-		if err != nil {
-			return uuid.Nil, err
-		}
-		if !merged.Valid {
-			return cur, nil
-		}
-		cur = uuid.UUID(merged.Bytes)
+	const q = `
+		WITH RECURSIVE chain AS (
+			SELECT id, merged_into, 0 AS depth
+			FROM stores
+			WHERE owner_id = $1 AND id = $2 AND ` + sqlActive + `
+			UNION ALL
+			SELECT s.id, s.merged_into, c.depth + 1
+			FROM stores s
+			JOIN chain c ON s.id = c.merged_into
+			WHERE s.owner_id = $1 AND s.` + sqlActiveFrag + ` AND c.depth < 64
+		)
+		SELECT id FROM chain WHERE merged_into IS NULL LIMIT 1
+	`
+	var id uuid.UUID
+	err := db.QueryRow(ctx, q, ownerID, storeID).Scan(&id)
+	if err == pgx.ErrNoRows {
+		return uuid.Nil, ErrNotFound
 	}
-	return uuid.Nil, ErrDepthExceeded
+	return id, err
 }

@@ -56,39 +56,43 @@ func GetGood(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.Good,
 	return g, err
 }
 
-func InsertGood(ctx context.Context, db DBTX, g models.Good) error {
+func InsertGoodReturning(ctx context.Context, db DBTX, g models.Good) (*models.Good, error) {
 	var cb any
 	if g.CreatedBy != nil {
 		cb = *g.CreatedBy
 	}
-	_, err := db.Exec(ctx, `
+	row := db.QueryRow(ctx, `
 		INSERT INTO goods (id, owner_id, category_id, name, normalized_name, merged_into, created_by)
 		VALUES ($1, $2, $3, $4, $5, NULL, $6)
+		RETURNING id, owner_id, category_id, name, normalized_name, merged_into, created_by, created_at, updated_at
 	`, g.ID, g.OwnerID, g.CategoryID, g.Name, g.NormalizedName, cb)
-	return err
+	out, err := scanGood(row)
+	if err == pgx.ErrNoRows {
+		return nil, ErrNotFound
+	}
+	return out, err
 }
 
-func UpdateGoodCanonical(ctx context.Context, db DBTX, ownerID, canonicalID uuid.UUID, categoryID *uuid.UUID, name, normalized string, createdBy *string) error {
+func UpdateGoodCanonicalReturning(ctx context.Context, db DBTX, ownerID, canonicalID uuid.UUID, categoryID *uuid.UUID, name, normalized string, createdBy *string) (*models.Good, error) {
 	var cb any
 	if createdBy != nil {
 		cb = *createdBy
 	}
-	tag, err := db.Exec(ctx, `
+	row := db.QueryRow(ctx, `
 		UPDATE goods
-		SET category_id = $3,
-		    name = $4,
-		    normalized_name = $5,
-		    updated_at = now(),
-		    created_by = COALESCE($6, created_by)
+		SET category_id     = $3,
+		    name             = $4,
+		    normalized_name  = $5,
+		    updated_at       = now(),
+		    created_by       = COALESCE($6, created_by)
 		WHERE owner_id = $1 AND id = $2 AND merged_into IS NULL AND `+sqlActive+`
+		RETURNING id, owner_id, category_id, name, normalized_name, merged_into, created_by, created_at, updated_at
 	`, ownerID, canonicalID, categoryID, name, normalized, cb)
-	if err != nil {
-		return err
+	out, err := scanGood(row)
+	if err == pgx.ErrNoRows {
+		return nil, ErrNotFound
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return out, err
 }
 
 func MarkGoodMerged(ctx context.Context, db DBTX, ownerID, sourceCanonicalID, targetCanonicalID uuid.UUID) error {

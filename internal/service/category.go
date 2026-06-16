@@ -2,13 +2,11 @@ package service
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
 	"github.com/exndiver/shopping-backend/internal/models"
 	"github.com/exndiver/shopping-backend/internal/normalize"
-	"github.com/exndiver/shopping-backend/internal/pgutil"
 	"github.com/exndiver/shopping-backend/internal/repository"
 	"github.com/google/uuid"
 )
@@ -18,32 +16,17 @@ func (s *Service) UpsertCategory(ctx context.Context, ownerID, id uuid.UUID, nam
 	if n == "" {
 		return nil, ErrBadRequest
 	}
-	trimmed := strings.TrimSpace(name)
-
-	_, err := repository.GetCategory(ctx, s.Pool, ownerID, id)
-	if errors.Is(err, repository.ErrNotFound) {
-		c := models.Category{
-			ID:             id,
-			OwnerID:        ownerID,
-			Name:           trimmed,
-			NormalizedName: n,
-		}
-		if err := repository.InsertCategory(ctx, s.Pool, c); err != nil {
-			if pgutil.IsUniqueViolation(err) {
-				return nil, ErrConflict
-			}
-			return nil, err
-		}
-		return repository.GetCategory(ctx, s.Pool, ownerID, id)
+	c := models.Category{
+		ID:             id,
+		OwnerID:        ownerID,
+		Name:           strings.TrimSpace(name),
+		NormalizedName: n,
 	}
+	out, err := repository.UpsertCategoryReturning(ctx, s.Pool, c)
 	if err != nil {
 		return nil, err
 	}
-
-	if err := repository.UpdateCategory(ctx, s.Pool, ownerID, id, trimmed, n); err != nil {
-		return nil, err
-	}
-	return repository.GetCategory(ctx, s.Pool, ownerID, id)
+	return out, nil
 }
 
 func (s *Service) GetCategory(ctx context.Context, ownerID, id uuid.UUID) (*models.Category, error) {

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/exndiver/shopping-backend/internal/models"
-	"github.com/exndiver/shopping-backend/internal/pgutil"
 	"github.com/exndiver/shopping-backend/internal/repository"
 	"github.com/google/uuid"
 )
@@ -37,7 +36,7 @@ func (s *Service) UpsertOffer(ctx context.Context, ownerID uuid.UUID, id, goodID
 			return repository.GetOffer(ctx, s.Pool, ownerID, id)
 		}
 		return nil, ErrConflict
-	} else if err != nil && !errors.Is(err, repository.ErrNotFound) {
+	} else if !errors.Is(err, repository.ErrNotFound) {
 		return nil, err
 	}
 
@@ -48,8 +47,10 @@ func (s *Service) UpsertOffer(ctx context.Context, ownerID uuid.UUID, id, goodID
 		StoreID:   sc,
 		CreatedBy: createdBy,
 	}
-	if err := repository.InsertOffer(ctx, s.Pool, o); err != nil {
-		if pgutil.IsUniqueViolation(err) {
+	out, err := repository.InsertOfferReturning(ctx, s.Pool, o)
+	if err != nil {
+		// unique violation on (owner_id, good_id, store_id) — another offer for same triple
+		if isUniqueViolation(err) {
 			triple, terr := repository.FindOfferByTriple(ctx, s.Pool, ownerID, gc, sc)
 			if terr != nil {
 				return nil, terr
@@ -64,7 +65,7 @@ func (s *Service) UpsertOffer(ctx context.Context, ownerID uuid.UUID, id, goodID
 		}
 		return nil, err
 	}
-	return repository.GetOffer(ctx, s.Pool, ownerID, id)
+	return out, nil
 }
 
 func (s *Service) ListOffersWithLatestPrices(ctx context.Context, ownerID, goodID uuid.UUID) ([]models.OfferWithLatestPrice, error) {
@@ -100,9 +101,7 @@ func (s *Service) ListOffersWithLatestPrices(ctx context.Context, ownerID, goodI
 				PackSize: lp.PackSize,
 				Unit:     lp.Unit,
 			}
-		} else if errors.Is(err, repository.ErrNotFound) {
-			item.Latest = nil
-		} else {
+		} else if !errors.Is(err, repository.ErrNotFound) {
 			return nil, err
 		}
 
@@ -118,6 +117,10 @@ func (s *Service) ListOffersSince(ctx context.Context, ownerID uuid.UUID, since 
 		return nil, err
 	}
 	for i := range items {
+		// Skip canonical resolution for soft-deleted offers — the good/store may no longer be active
+		if items[i].DeletedAt != nil {
+			continue
+		}
 		gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, items[i].GoodID)
 		if err != nil {
 			return nil, err

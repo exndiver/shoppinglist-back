@@ -37,29 +37,25 @@ func GetCategory(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.C
 	return c, err
 }
 
-func InsertCategory(ctx context.Context, db DBTX, c models.Category) error {
-	_, err := db.Exec(ctx, `
+// UpsertCategoryReturning inserts or updates a category in one round-trip.
+// Returns ErrNotFound when a soft-deleted row blocks the update.
+func UpsertCategoryReturning(ctx context.Context, db DBTX, c models.Category) (*models.Category, error) {
+	row := db.QueryRow(ctx, `
 		INSERT INTO categories (id, owner_id, name, normalized_name)
 		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (id) DO UPDATE
+		  SET name            = EXCLUDED.name,
+		      normalized_name = EXCLUDED.normalized_name,
+		      updated_at      = now()
+		WHERE categories.owner_id = $2
+		  AND categories.deleted_at IS NULL
+		RETURNING id, owner_id, name, normalized_name, created_at, updated_at
 	`, c.ID, c.OwnerID, c.Name, c.NormalizedName)
-	return err
-}
-
-func UpdateCategory(ctx context.Context, db DBTX, ownerID, id uuid.UUID, name, normalized string) error {
-	tag, err := db.Exec(ctx, `
-		UPDATE categories
-		SET name = $3,
-		    normalized_name = $4,
-		    updated_at = now()
-		WHERE owner_id = $1 AND id = $2 AND `+sqlActive+`
-	`, ownerID, id, name, normalized)
-	if err != nil {
-		return err
+	out, err := scanCategory(row)
+	if err == pgx.ErrNoRows {
+		return nil, ErrNotFound
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return out, err
 }
 
 func SearchCategories(ctx context.Context, db DBTX, ownerID uuid.UUID, normalizedContains string, limit int) ([]models.Category, error) {
