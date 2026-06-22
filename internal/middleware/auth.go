@@ -12,9 +12,19 @@ import (
 
 const HeaderDeviceID = "X-Device-Id"
 
+// IsPublicPath reports whether a path must be reachable without bearer auth.
+func IsPublicPath(path string) bool {
+	return path == "/health" || path == "/metrics"
+}
+
 // BearerOwner extracts Authorization: Bearer <owner_uuid> into context as owner id.
+// Public paths (health, metrics) bypass authentication.
 func BearerOwner(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if IsPublicPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		raw := r.Header.Get("Authorization")
 		if raw == "" {
 			httpx.WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "missing Authorization header")
@@ -31,7 +41,6 @@ func BearerOwner(next http.Handler) http.Handler {
 			httpx.WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid bearer token (expected UUID)")
 			return
 		}
-		attachOwnerID(r.Context(), ownerID)
 		ctx := context.WithValue(r.Context(), contextkey.OwnerID, ownerID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

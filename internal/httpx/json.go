@@ -34,7 +34,10 @@ func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	if err := dec.Decode(dst); err != nil {
 		var syntax *json.SyntaxError
 		var ut *json.UnmarshalTypeError
+		var maxErr *http.MaxBytesError
 		switch {
+		case errors.As(err, &maxErr):
+			WriteError(w, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", "request body exceeds limit")
 		case errors.Is(err, io.EOF):
 			WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "empty body")
 		case errors.As(err, &syntax), errors.As(err, &ut):

@@ -9,6 +9,7 @@ import (
 
 	"github.com/exndiver/shopping-backend/internal/config"
 	"github.com/exndiver/shopping-backend/internal/handlers"
+	"github.com/exndiver/shopping-backend/internal/metrics"
 	"github.com/exndiver/shopping-backend/internal/middleware"
 	"github.com/exndiver/shopping-backend/internal/service"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -26,13 +27,28 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) *Server {
 	health := handlers.NewHealthHandler(pool)
 	mux.HandleFunc("GET /health", health.Get)
 
+	if cfg.MetricsEnabled {
+		mux.Handle(cfg.MetricsPath, metrics.Handler())
+	}
+
 	svc := service.New(pool)
 	api := handlers.NewAPI(svc)
-	mux.Handle("/", middleware.BearerOwner(api))
+	mux.Handle("/", api)
 
+	// Middleware order (наружу внутрь):
+	//   RequestID → Recover → Metrics → RateLimit → BearerOwner → MaxBody → AccessLog → mux
+	// Owner кладётся в context до AccessLog, чтобы enduser.id попадал в лог.
 	slow := cfg.LogSlowRequest
 	var h http.Handler = mux
 	h = middleware.AccessLog(slow, h)
+	h = middleware.MaxBody(cfg.HTTPMaxBodyBytes, h)
+	h = middleware.BearerOwner(h)
+	if cfg.RateLimit > 0 {
+		h = middleware.RateLimit(cfg.RateLimit, cfg.RateLimitBurst, h)
+	}
+	if cfg.MetricsEnabled {
+		h = metrics.Middleware(h)
+	}
 	h = middleware.Recover(h)
 	h = middleware.RequestID(h)
 
@@ -40,6 +56,8 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) *Server {
 		Addr:              ":" + cfg.Port,
 		Handler:           h,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       cfg.HTTPReadTimeout,
+		WriteTimeout:      cfg.HTTPWriteTimeout,
 	}
 
 	return &Server{

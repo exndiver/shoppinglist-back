@@ -27,13 +27,27 @@ func Init(cfg config.Config) *slog.Logger {
 	}
 
 	var out io.Writer
-	f, err := openLogFile(path)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "logging: cannot open log file %q: %v (using stderr)\n", path, err)
-		out = os.Stderr
-	} else {
-		logFile = f
-		out = f
+	switch strings.ToLower(strings.TrimSpace(cfg.LogOutput)) {
+	case "stdout":
+		out = os.Stdout
+	case "both":
+		f, err := openLogFile(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "logging: cannot open log file %q: %v (using stdout only)\n", path, err)
+			out = os.Stdout
+		} else {
+			logFile = f
+			out = io.MultiWriter(os.Stdout, f)
+		}
+	default: // "file"
+		f, err := openLogFile(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "logging: cannot open log file %q: %v (using stderr)\n", path, err)
+			out = os.Stderr
+		} else {
+			logFile = f
+			out = f
+		}
 	}
 
 	var h slog.Handler
@@ -46,7 +60,7 @@ func Init(cfg config.Config) *slog.Logger {
 
 	logger := slog.New(h).With(
 		slog.String("service.name", cfg.LogService),
-		slog.String("service.version", buildVersion()),
+		slog.String("service.version", cfg.AppVersion),
 	)
 	slog.SetDefault(logger)
 	return logger
@@ -83,13 +97,6 @@ func parseLevel(s string) slog.Leveler {
 	default:
 		return slog.LevelInfo
 	}
-}
-
-func buildVersion() string {
-	if v := os.Getenv("APP_VERSION"); v != "" {
-		return v
-	}
-	return "dev"
 }
 
 // Startup returns common attributes for process lifecycle logs.

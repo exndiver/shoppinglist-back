@@ -15,11 +15,10 @@ func Connect(ctx context.Context, cfg config.Config) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("parse postgres url: %w", err)
 	}
 
-	// Консервативные дефолты для старта; дальше настроим под нагрузку.
-	connCfg.MaxConns = 10
-	connCfg.MinConns = 0
-	connCfg.MaxConnLifetime = 30 * time.Minute
-	connCfg.MaxConnIdleTime = 5 * time.Minute
+	connCfg.MaxConns = cfg.DBMaxConns
+	connCfg.MinConns = cfg.DBMinConns
+	connCfg.MaxConnLifetime = cfg.DBMaxConnLifetime
+	connCfg.MaxConnIdleTime = cfg.DBMaxConnIdleTime
 
 	pool, err := pgxpool.NewWithConfig(ctx, connCfg)
 	if err != nil {

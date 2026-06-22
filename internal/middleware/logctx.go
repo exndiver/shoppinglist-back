@@ -10,10 +10,9 @@ type logCtxKey int
 
 const logBagKey logCtxKey = iota
 
-// logBag is attached in RequestID and updated in BearerOwner for access logs.
+// logBag holds per-request attributes attached in RequestID.
 type logBag struct {
 	requestID string
-	ownerID   *uuid.UUID
 }
 
 func logBagFrom(ctx context.Context) *logBag {
@@ -25,9 +24,15 @@ func logBagFrom(ctx context.Context) *logBag {
 	return b
 }
 
-// attachOwnerID records the authenticated owner for access logging (same request tree as RequestID).
-func attachOwnerID(ctx context.Context, id uuid.UUID) {
+// RequestIDOf returns the request id stored on the context, if any.
+func RequestIDOf(ctx context.Context) string {
 	if b := logBagFrom(ctx); b != nil {
-		b.ownerID = &id
+		return b.requestID
 	}
+	return ""
+}
+
+// OwnerIDOf is a thin alias over OwnerFromContext for logging helpers.
+func OwnerIDOf(ctx context.Context) (uuid.UUID, bool) {
+	return OwnerFromContext(ctx)
 }

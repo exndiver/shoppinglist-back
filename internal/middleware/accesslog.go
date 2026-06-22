@@ -39,9 +39,9 @@ func AccessLog(slowThreshold time.Duration, next http.Handler) http.Handler {
 
 		if bag := logBagFrom(r.Context()); bag != nil {
 			attrs = append(attrs, slog.String("request.id", bag.requestID))
-			if bag.ownerID != nil {
-				attrs = append(attrs, slog.String("enduser.id", bag.ownerID.String()))
-			}
+		}
+		if ownerID, ok := OwnerIDOf(r.Context()); ok {
+			attrs = append(attrs, slog.String("enduser.id", ownerID.String()))
 		}
 
 		// Уровень по объёму шума: 4xx остаётся info (фильтруйте по http.status_code в SIEM).

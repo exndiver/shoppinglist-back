@@ -118,8 +118,6 @@ func SearchCanonicalStores(ctx context.Context, db DBTX, ownerID uuid.UUID, norm
 	return out, rows.Err()
 }
 
-
-
 func ListStoresSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since time.Time) ([]models.Store, error) {
 	rows, err := db.Query(ctx, `
 		SELECT id, owner_id, name, normalized_name, merged_into, created_by, created_at, updated_at
