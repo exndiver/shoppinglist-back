@@ -243,6 +243,22 @@ func (a *API) postAcceptInvitation(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *API) deleteMembership(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := a.owner(w, r)
+	if !ok {
+		return
+	}
+	listID, ok := httpx.ParseUUID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if err := a.svc.LeaveList(r.Context(), ownerID, listID); err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (a *API) deleteInvitation(w http.ResponseWriter, r *http.Request) {
 	ownerID, ok := a.owner(w, r)
 	if !ok {

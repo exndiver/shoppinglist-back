@@ -27,7 +27,9 @@ func ListSharedListsForMemberSince(ctx context.Context, db DBTX, memberOwnerID u
 		    ON sh.list_id = sl.id
 		   AND sh.member_owner_id = $1
 		   AND sh.revoked_at IS NULL
-		WHERE sl.updated_at > $2 AND sl.`+sqlActiveFrag+`
+		-- Either the list changed, or the membership itself changed (e.g. a
+		-- fresh accept) — in which case the member needs the full list.
+		WHERE (sl.updated_at > $2 OR sh.updated_at > $2) AND sl.`+sqlActiveFrag+`
 		ORDER BY sl.updated_at ASC, sl.id ASC
 	`, memberOwnerID, since)
 	if err != nil {
@@ -58,7 +60,8 @@ func ListSharedListItemsForMemberSince(ctx context.Context, db DBTX, memberOwner
 		   AND sh.revoked_at IS NULL
 		INNER JOIN shopping_lists sl
 		    ON sl.id = li.list_id AND sl.`+sqlActiveFrag+`
-		WHERE li.updated_at > $2
+		-- Full dump of a list's items when the membership is fresh/changed.
+		WHERE (li.updated_at > $2 OR sh.updated_at > $2)
 		ORDER BY li.updated_at ASC, li.id ASC
 	`, memberOwnerID, since)
 	if err != nil {
@@ -89,7 +92,8 @@ func ListSharedGoodsForMemberSince(ctx context.Context, db DBTX, memberOwnerID u
 		    ON sh.list_id = li.list_id
 		   AND sh.member_owner_id = $1
 		   AND sh.revoked_at IS NULL
-		WHERE g.updated_at > $2 AND g.`+sqlActiveFrag+`
+		-- Full dump of referenced goods when the membership is fresh/changed.
+		WHERE (g.updated_at > $2 OR sh.updated_at > $2) AND g.`+sqlActiveFrag+`
 		ORDER BY g.updated_at ASC, g.id ASC
 	`, memberOwnerID, since)
 	if err != nil {

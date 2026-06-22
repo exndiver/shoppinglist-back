@@ -62,6 +62,7 @@ func NewAPI(svc *service.Service) http.Handler {
 	mux.HandleFunc("PATCH /lists/{id}/shares/{memberId}", a.patchShareAccess)
 	mux.HandleFunc("DELETE /lists/{id}/shares/{memberId}", a.deleteShare)
 	mux.HandleFunc("PATCH /lists/{id}/display-name", a.patchSharedListName)
+	mux.HandleFunc("DELETE /lists/{id}/membership", a.deleteMembership)
 	mux.HandleFunc("POST /invitations/{token}/accept", a.postAcceptInvitation)
 	mux.HandleFunc("DELETE /invitations/{token}", a.deleteInvitation)
 

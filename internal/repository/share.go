@@ -139,6 +139,22 @@ func RevokeShare(ctx context.Context, db DBTX, ownerID, listID, memberOwnerID uu
 	return nil
 }
 
+// LeaveListShare lets a member end their own membership (member-initiated,
+// e.g. when they delete their copy of a shared list).
+func LeaveListShare(ctx context.Context, db DBTX, memberOwnerID, listID uuid.UUID) error {
+	tag, err := db.Exec(ctx, `
+		UPDATE list_shares SET revoked_at = now(), updated_at = now()
+		WHERE list_id = $2 AND member_owner_id = $1 AND revoked_at IS NULL
+	`, memberOwnerID, listID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // UpdateShareDisplayName lets a member rename their copy of a shared list.
 func UpdateShareDisplayName(ctx context.Context, db DBTX, memberOwnerID, listID uuid.UUID, name *string) error {
 	var dn any

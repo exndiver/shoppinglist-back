@@ -142,6 +142,12 @@ func (s *Service) RevokeShare(ctx context.Context, ownerID, listID, memberOwnerI
 	return repository.RevokeShare(ctx, s.Pool, ownerID, listID, memberOwnerID)
 }
 
+// LeaveList lets a member remove themselves from a shared list. The owner's
+// member list updates on next sync (the share row is revoked).
+func (s *Service) LeaveList(ctx context.Context, memberOwnerID, listID uuid.UUID) error {
+	return repository.LeaveListShare(ctx, s.Pool, memberOwnerID, listID)
+}
+
 // RevokeInvitation cancels a still-pending invitation (owner only).
 func (s *Service) RevokeInvitation(ctx context.Context, ownerID uuid.UUID, token string) error {
 	return repository.RevokeInvitation(ctx, s.Pool, ownerID, token)
