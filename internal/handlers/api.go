@@ -55,6 +55,16 @@ func NewAPI(svc *service.Service) http.Handler {
 
 	mux.HandleFunc("POST /good-identities", a.postGoodIdentity)
 
+	// List sharing.
+	mux.HandleFunc("POST /lists/{id}/invitations", a.postCreateInvitation)
+	mux.HandleFunc("GET /lists/{id}/invitations", a.getListInvitations)
+	mux.HandleFunc("GET /lists/{id}/shares", a.getListShares)
+	mux.HandleFunc("PATCH /lists/{id}/shares/{memberId}", a.patchShareAccess)
+	mux.HandleFunc("DELETE /lists/{id}/shares/{memberId}", a.deleteShare)
+	mux.HandleFunc("PATCH /lists/{id}/display-name", a.patchSharedListName)
+	mux.HandleFunc("POST /invitations/{token}/accept", a.postAcceptInvitation)
+	mux.HandleFunc("DELETE /invitations/{token}", a.deleteInvitation)
+
 	mux.HandleFunc("POST /sync/batch", a.postSyncBatch)
 
 	return mux
@@ -521,14 +531,14 @@ func (a *API) postPriceRecord(w http.ResponseWriter, r *http.Request) {
 }
 
 type priceRecordResp struct {
-	ID         uuid.UUID  `json:"id"`
-	OwnerID    uuid.UUID  `json:"owner_id"`
-	OfferID    uuid.UUID  `json:"offer_id"`
-	Price      float64    `json:"price"`
-	PackSize   *float64   `json:"pack_size,omitempty"`
-	Unit       *string    `json:"unit,omitempty"`
-	RecordedAt time.Time  `json:"recorded_at"`
-	CreatedAt  time.Time  `json:"created_at"`
+	ID         uuid.UUID `json:"id"`
+	OwnerID    uuid.UUID `json:"owner_id"`
+	OfferID    uuid.UUID `json:"offer_id"`
+	Price      float64   `json:"price"`
+	PackSize   *float64  `json:"pack_size,omitempty"`
+	Unit       *string   `json:"unit,omitempty"`
+	RecordedAt time.Time `json:"recorded_at"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 func priceRecordRespFrom(pr models.PriceRecord) priceRecordResp {
@@ -1008,7 +1018,14 @@ type syncBatchResp struct {
 	Lists        []listResp        `json:"lists"`
 	ListItems    []listItemResp    `json:"list_items"`
 	PriceRecords []priceRecordResp `json:"price_records"`
-	ServerTime   time.Time         `json:"server_time"`
+	// Shared data: lists owned by others that the caller was granted access to,
+	// their items (from any participant), the goods those items reference (for
+	// local import), and the membership rows themselves (incl. revocations).
+	Shares          []shareResp    `json:"shares"`
+	SharedLists     []listResp     `json:"shared_lists"`
+	SharedListItems []listItemResp `json:"shared_list_items"`
+	SharedGoods     []goodResp     `json:"shared_goods"`
+	ServerTime      time.Time      `json:"server_time"`
 }
 
 func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
@@ -1063,6 +1080,28 @@ func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Shared data the caller participates in as a member.
+	shares, err := a.svc.SharesForMemberSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	sharedLists, err := a.svc.SharedListsSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	sharedItems, err := a.svc.SharedListItemsSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	sharedGoods, err := a.svc.SharedGoodsSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+
 	respGoods := make([]goodResp, 0, len(goods))
 	for _, g := range goods {
 		respGoods = append(respGoods, goodRespFrom(g))
@@ -1091,15 +1130,35 @@ func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
 	for _, pr := range prices {
 		respPrices = append(respPrices, priceRecordRespFrom(pr))
 	}
+	respShares := make([]shareResp, 0, len(shares))
+	for _, s := range shares {
+		respShares = append(respShares, shareRespFrom(s))
+	}
+	respSharedLists := make([]listResp, 0, len(sharedLists))
+	for _, l := range sharedLists {
+		respSharedLists = append(respSharedLists, listRespFrom(l))
+	}
+	respSharedItems := make([]listItemResp, 0, len(sharedItems))
+	for _, it := range sharedItems {
+		respSharedItems = append(respSharedItems, listItemRespFrom(service.ListItemDetail{ListItem: it}))
+	}
+	respSharedGoods := make([]goodResp, 0, len(sharedGoods))
+	for _, g := range sharedGoods {
+		respSharedGoods = append(respSharedGoods, goodRespFrom(g))
+	}
 
 	httpx.WriteJSON(w, http.StatusOK, syncBatchResp{
-		Categories:  respCategories,
-		Goods:       respGoods,
-		Stores:      respStores,
-		Offers:      respOffers,
-		Lists:       respLists,
-		ListItems:   respListItems,
-		PriceRecords: respPrices,
-		ServerTime:  time.Now().UTC(),
+		Categories:      respCategories,
+		Goods:           respGoods,
+		Stores:          respStores,
+		Offers:          respOffers,
+		Lists:           respLists,
+		ListItems:       respListItems,
+		PriceRecords:    respPrices,
+		Shares:          respShares,
+		SharedLists:     respSharedLists,
+		SharedListItems: respSharedItems,
+		SharedGoods:     respSharedGoods,
+		ServerTime:      time.Now().UTC(),
 	})
 }

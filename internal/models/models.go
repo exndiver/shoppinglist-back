@@ -101,3 +101,52 @@ type GoodIdentity struct {
 	Source     string
 	ExternalID string
 }
+
+// ── List sharing ──────────────────────────────────────────────────────
+
+// ShareAccess is the permission level granted to a list member.
+type ShareAccess string
+
+const (
+	ShareAccessView ShareAccess = "view"
+	ShareAccessEdit ShareAccess = "edit"
+)
+
+func (a ShareAccess) Valid() bool {
+	return a == ShareAccessView || a == ShareAccessEdit
+}
+
+// InvitationStatus is the lifecycle state of a one-time invitation token.
+type InvitationStatus string
+
+const (
+	InvitationPending  InvitationStatus = "pending"
+	InvitationAccepted InvitationStatus = "accepted"
+	InvitationRevoked  InvitationStatus = "revoked"
+)
+
+// ListShare grants MemberOwnerID access to the list owned by OwnerID.
+type ListShare struct {
+	ID            uuid.UUID
+	ListID        uuid.UUID
+	OwnerID       uuid.UUID // list author (sharer)
+	MemberOwnerID uuid.UUID // recipient
+	Access        ShareAccess
+	DisplayName   *string // member's local rename; nil = use list.Name
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	RevokedAt     *time.Time
+}
+
+// ListInvitation is a single-use token that grants access to a list when accepted.
+type ListInvitation struct {
+	Token      string
+	ListID     uuid.UUID
+	OwnerID    uuid.UUID // creator (list author)
+	Access     ShareAccess
+	Status     InvitationStatus
+	AcceptedBy *uuid.UUID
+	AcceptedAt *time.Time
+	CreatedAt  time.Time
+	ExpiresAt  *time.Time
+}
