@@ -192,3 +192,9 @@ func (s *Service) SharedListItemsSince(ctx context.Context, memberOwnerID uuid.U
 func (s *Service) SharedGoodsSince(ctx context.Context, memberOwnerID uuid.UUID, since time.Time) ([]models.Good, error) {
 	return repository.ListSharedGoodsForMemberSince(ctx, s.Pool, memberOwnerID, since)
 }
+
+// ForeignGoodsForOwnedListsSince returns goods a collaborator added to the
+// owner's own lists, so the owner can import them and render those items.
+func (s *Service) ForeignGoodsForOwnedListsSince(ctx context.Context, ownerID uuid.UUID, since time.Time) ([]models.Good, error) {
+	return repository.ListForeignGoodsForOwnedListsSince(ctx, s.Pool, ownerID, since)
+}
