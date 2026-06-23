@@ -184,20 +184,25 @@ func PatchListItem(ctx context.Context, db DBTX, ownerID, id uuid.UUID, patch Li
 func ListListItemsSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since time.Time) ([]models.ListItem, error) {
 	var rows pgx.Rows
 	var err error
+	// Scope by LIST ownership (sl.owner_id = $1), not item ownership, so the
+	// owner of a shared list receives items a collaborator added regardless of
+	// which owner_id those item rows carry. Items on the owner's own lists all
+	// match too. Items on lists shared *to* this caller are delivered separately
+	// via the shared-sync path.
 	if since.IsZero() {
 		rows, err = db.Query(ctx, `
 			SELECT li.id, li.owner_id, li.list_id, li.good_id, li.offer_id, li.quantity, li.price_snapshot, li.is_purchased, li.created_by, li.created_at, li.updated_at
 			FROM list_items li
-			INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.owner_id = li.owner_id AND sl.deleted_at IS NULL
-			WHERE li.owner_id = $1 AND li.deleted_at IS NULL
+			INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.owner_id = $1 AND sl.deleted_at IS NULL
+			WHERE li.deleted_at IS NULL
 			ORDER BY li.updated_at ASC, li.id ASC
 		`, ownerID)
 	} else {
 		rows, err = db.Query(ctx, `
 			SELECT li.id, li.owner_id, li.list_id, li.good_id, li.offer_id, li.quantity, li.price_snapshot, li.is_purchased, li.created_by, li.created_at, li.updated_at
 			FROM list_items li
-			INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.owner_id = li.owner_id AND sl.deleted_at IS NULL
-			WHERE li.owner_id = $1 AND li.updated_at > $2 AND li.deleted_at IS NULL
+			INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.owner_id = $1 AND sl.deleted_at IS NULL
+			WHERE li.updated_at > $2 AND li.deleted_at IS NULL
 			ORDER BY li.updated_at ASC, li.id ASC
 		`, ownerID, since)
 	}
@@ -238,9 +243,11 @@ func SoftDeleteListItem(ctx context.Context, db DBTX, ownerID, id uuid.UUID) err
 // owner's own lists since the given time, so the owner's other devices drop them.
 func ListDeletedListItemIDsForOwnerSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since time.Time) ([]uuid.UUID, error) {
 	rows, err := db.Query(ctx, `
-		SELECT id FROM list_items
-		WHERE owner_id = $1 AND deleted_at IS NOT NULL AND updated_at > $2
-		ORDER BY updated_at ASC, id ASC
+		SELECT li.id
+		FROM list_items li
+		INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.owner_id = $1
+		WHERE li.deleted_at IS NOT NULL AND li.updated_at > $2
+		ORDER BY li.updated_at ASC, li.id ASC
 	`, ownerID, since)
 	if err != nil {
 		return nil, err
