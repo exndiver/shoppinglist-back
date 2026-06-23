@@ -100,10 +100,26 @@ func (s *Service) AddListItem(ctx context.Context, ownerID uuid.UUID, id, listID
 		quantity = 1
 	}
 
-	if _, err := repository.GetShoppingList(ctx, s.Pool, ownerID, listID); err != nil {
+	// The author or any edit-access member may add. The item lives in the list
+	// owner's data scope (preserving the sl.owner_id = li.owner_id invariant the
+	// owner's own sync relies on); created_by attributes the member who added it.
+	access, ok, err := repository.AccessForOwner(ctx, s.Pool, listID, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, ErrNotFound
+	}
+	if access != models.ShareAccessEdit {
+		return nil, ErrBadRequest
+	}
+	listOwnerID, err := repository.GetListOwner(ctx, s.Pool, listID)
+	if err != nil {
 		return nil, err
 	}
 
+	// Goods/offers are resolved in the caller's catalog — a member adds their
+	// own good, which the owner imports via the foreign-goods sync path.
 	gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, goodID)
 	if err != nil {
 		return nil, err
@@ -127,7 +143,7 @@ func (s *Service) AddListItem(ctx context.Context, ownerID uuid.UUID, id, listID
 
 	it := models.ListItem{
 		ID:            id,
-		OwnerID:       ownerID,
+		OwnerID:       listOwnerID,
 		ListID:        listID,
 		GoodID:        gc,
 		OfferID:       resolvedOffer,
@@ -144,7 +160,7 @@ func (s *Service) AddListItem(ctx context.Context, ownerID uuid.UUID, id, listID
 		return nil, err
 	}
 
-	got, err := repository.GetListItem(ctx, s.Pool, ownerID, id)
+	got, err := repository.GetListItem(ctx, s.Pool, listOwnerID, id)
 	if err != nil {
 		return nil, err
 	}

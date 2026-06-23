@@ -69,6 +69,18 @@ func GetShoppingList(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*mode
 	return l, err
 }
 
+// GetListOwner returns the owner of an active list regardless of who is asking.
+// Used when a collaborator writes to a list they don't own, so the row can be
+// scoped to the list owner's data while still attributing the author.
+func GetListOwner(ctx context.Context, db DBTX, listID uuid.UUID) (uuid.UUID, error) {
+	var owner uuid.UUID
+	err := db.QueryRow(ctx, `SELECT owner_id FROM shopping_lists WHERE id = $1 AND `+sqlActive, listID).Scan(&owner)
+	if err == pgx.ErrNoRows {
+		return uuid.Nil, ErrNotFound
+	}
+	return owner, err
+}
+
 func ListShoppingLists(ctx context.Context, db DBTX, ownerID uuid.UUID, limit int) ([]models.ShoppingList, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 200

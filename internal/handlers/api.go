@@ -1050,6 +1050,15 @@ func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
 		writeSvcErr(w, err)
 		return
 	}
+	// Goods a collaborator added to lists this caller owns. Delivered in the
+	// regular goods array (not shared_goods) so they are imported before the
+	// owner's own list items that reference them are applied.
+	foreignGoods, err := a.svc.ForeignGoodsForOwnedListsSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	goods = append(goods, foreignGoods...)
 	stores, err := a.svc.ListStoresSince(r.Context(), ownerID, since)
 	if err != nil {
 		writeSvcErr(w, err)

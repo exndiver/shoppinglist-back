@@ -79,6 +79,39 @@ func ListSharedListItemsForMemberSince(ctx context.Context, db DBTX, memberOwner
 	return out, rows.Err()
 }
 
+// ListForeignGoodsForOwnedListsSince returns goods referenced by items on lists
+// the given owner OWNS, but which the owner does not own themselves — i.e. goods
+// a collaborator brought in by adding an item. The owner imports these into its
+// catalog so the collaborator's items render. Gated on either the good or its
+// linking item changing since, so a freshly-linked but old good is still sent.
+func ListForeignGoodsForOwnedListsSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since time.Time) ([]models.Good, error) {
+	rows, err := db.Query(ctx, `
+		SELECT DISTINCT g.id, g.owner_id, g.category_id, g.name, g.normalized_name,
+		       g.merged_into, g.created_by, g.created_at, g.updated_at
+		FROM goods g
+		INNER JOIN list_items li ON li.good_id = g.id
+		INNER JOIN shopping_lists sl
+		    ON sl.id = li.list_id AND sl.owner_id = $1 AND sl.`+sqlActiveFrag+`
+		WHERE g.owner_id <> $1
+		  AND (g.updated_at > $2 OR li.updated_at > $2)
+		  AND g.`+sqlActiveFrag+`
+		ORDER BY g.updated_at ASC, g.id ASC
+	`, ownerID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.Good
+	for rows.Next() {
+		g, err := scanGood(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *g)
+	}
+	return out, rows.Err()
+}
+
 // ListSharedGoodsForMemberSince returns the goods referenced by items of the
 // member's shared lists, changed since the given time. These goods may be owned
 // by any participant; the client imports them into its own catalog.
