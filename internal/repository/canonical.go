@@ -32,6 +32,32 @@ func ResolveGoodCanonical(ctx context.Context, db DBTX, ownerID, goodID uuid.UUI
 	return id, err
 }
 
+// ResolveGoodCanonicalAny walks the merge chain by id, regardless of owner.
+// Used on shared lists, where a collaborator's item references a good owned by
+// a different participant; merge chains stay within a single owner, so walking
+// by id alone is safe.
+func ResolveGoodCanonicalAny(ctx context.Context, db DBTX, goodID uuid.UUID) (uuid.UUID, error) {
+	const q = `
+		WITH RECURSIVE chain AS (
+			SELECT id, merged_into, 0 AS depth
+			FROM goods
+			WHERE id = $1 AND ` + sqlActive + `
+			UNION ALL
+			SELECT g.id, g.merged_into, c.depth + 1
+			FROM goods g
+			JOIN chain c ON g.id = c.merged_into
+			WHERE g.` + sqlActiveFrag + ` AND c.depth < 64
+		)
+		SELECT id FROM chain WHERE merged_into IS NULL LIMIT 1
+	`
+	var id uuid.UUID
+	err := db.QueryRow(ctx, q, goodID).Scan(&id)
+	if err == pgx.ErrNoRows {
+		return uuid.Nil, ErrNotFound
+	}
+	return id, err
+}
+
 // ResolveStoreCanonical walks the merge chain in a single recursive query.
 func ResolveStoreCanonical(ctx context.Context, db DBTX, ownerID, storeID uuid.UUID) (uuid.UUID, error) {
 	const q = `

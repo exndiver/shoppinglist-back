@@ -118,9 +118,11 @@ func (s *Service) AddListItem(ctx context.Context, ownerID uuid.UUID, id, listID
 		return nil, err
 	}
 
-	// Goods/offers are resolved in the caller's catalog — a member adds their
-	// own good, which the owner imports via the foreign-goods sync path.
-	gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, goodID)
+	// The referenced good may belong to ANY participant (a member can add their
+	// own new good, or re-add a good imported from the shared list that the
+	// owner created), so resolve it owner-agnostically rather than in the
+	// caller's catalog.
+	gc, err := repository.ResolveGoodCanonicalAny(ctx, s.Pool, goodID)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +133,7 @@ func (s *Service) AddListItem(ctx context.Context, ownerID uuid.UUID, id, listID
 		if err != nil {
 			return nil, err
 		}
-		og, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, off.GoodID)
+		og, err := repository.ResolveGoodCanonicalAny(ctx, s.Pool, off.GoodID)
 		if err != nil {
 			return nil, err
 		}
@@ -165,11 +167,11 @@ func (s *Service) AddListItem(ctx context.Context, ownerID uuid.UUID, id, listID
 		return nil, err
 	}
 	got.GoodID = gc
-	g, err := repository.GetGood(ctx, s.Pool, ownerID, gc)
-	if err != nil {
-		return nil, err
+	goodName := ""
+	if g, gerr := repository.GetGoodAny(ctx, s.Pool, gc); gerr == nil {
+		goodName = g.Name
 	}
-	return &ListItemDetail{ListItem: *got, GoodName: g.Name}, nil
+	return &ListItemDetail{ListItem: *got, GoodName: goodName}, nil
 }
 
 func (s *Service) PatchListItem(ctx context.Context, callerID, itemID uuid.UUID, patch repository.ListItemPatch) error {
@@ -194,7 +196,7 @@ func (s *Service) PatchListItem(ctx context.Context, callerID, itemID uuid.UUID,
 	// Offer pinning is validated within the item's owner scope. Clearing the
 	// offer needs no validation.
 	if patch.OfferIDPresent && patch.OfferID != nil {
-		gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, it.OwnerID, it.GoodID)
+		gc, err := repository.ResolveGoodCanonicalAny(ctx, s.Pool, it.GoodID)
 		if err != nil {
 			return err
 		}
@@ -202,7 +204,7 @@ func (s *Service) PatchListItem(ctx context.Context, callerID, itemID uuid.UUID,
 		if err != nil {
 			return err
 		}
-		og, err := repository.ResolveGoodCanonical(ctx, s.Pool, it.OwnerID, off.GoodID)
+		og, err := repository.ResolveGoodCanonicalAny(ctx, s.Pool, off.GoodID)
 		if err != nil {
 			return err
 		}
