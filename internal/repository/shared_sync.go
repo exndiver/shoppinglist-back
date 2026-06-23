@@ -61,7 +61,7 @@ func ListSharedListItemsForMemberSince(ctx context.Context, db DBTX, memberOwner
 		INNER JOIN shopping_lists sl
 		    ON sl.id = li.list_id AND sl.`+sqlActiveFrag+`
 		-- Full dump of a list's items when the membership is fresh/changed.
-		WHERE (li.updated_at > $2 OR sh.updated_at > $2)
+		WHERE (li.updated_at > $2 OR sh.updated_at > $2) AND li.deleted_at IS NULL
 		ORDER BY li.updated_at ASC, li.id ASC
 	`, memberOwnerID, since)
 	if err != nil {
@@ -89,7 +89,7 @@ func ListForeignGoodsForOwnedListsSince(ctx context.Context, db DBTX, ownerID uu
 		SELECT DISTINCT g.id, g.owner_id, g.category_id, g.name, g.normalized_name,
 		       g.merged_into, g.created_by, g.created_at, g.updated_at
 		FROM goods g
-		INNER JOIN list_items li ON li.good_id = g.id
+		INNER JOIN list_items li ON li.good_id = g.id AND li.deleted_at IS NULL
 		INNER JOIN shopping_lists sl
 		    ON sl.id = li.list_id AND sl.owner_id = $1 AND sl.`+sqlActiveFrag+`
 		WHERE g.owner_id <> $1
@@ -120,7 +120,7 @@ func ListSharedGoodsForMemberSince(ctx context.Context, db DBTX, memberOwnerID u
 		SELECT DISTINCT g.id, g.owner_id, g.category_id, g.name, g.normalized_name,
 		       g.merged_into, g.created_by, g.created_at, g.updated_at
 		FROM goods g
-		INNER JOIN list_items li ON li.good_id = g.id
+		INNER JOIN list_items li ON li.good_id = g.id AND li.deleted_at IS NULL
 		INNER JOIN list_shares sh
 		    ON sh.list_id = li.list_id
 		   AND sh.member_owner_id = $1
@@ -142,4 +142,24 @@ func ListSharedGoodsForMemberSince(ctx context.Context, db DBTX, memberOwnerID u
 		out = append(out, *g)
 	}
 	return out, rows.Err()
+}
+
+// ListDeletedSharedListItemIDsForMemberSince returns ids of items tombstoned on
+// lists the member has active access to, so the member's device drops them.
+func ListDeletedSharedListItemIDsForMemberSince(ctx context.Context, db DBTX, memberOwnerID uuid.UUID, since time.Time) ([]uuid.UUID, error) {
+	rows, err := db.Query(ctx, `
+		SELECT li.id
+		FROM list_items li
+		INNER JOIN list_shares sh
+		    ON sh.list_id = li.list_id
+		   AND sh.member_owner_id = $1
+		   AND sh.revoked_at IS NULL
+		WHERE li.deleted_at IS NOT NULL AND li.updated_at > $2
+		ORDER BY li.updated_at ASC, li.id ASC
+	`, memberOwnerID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanUUIDs(rows)
 }

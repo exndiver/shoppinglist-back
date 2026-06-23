@@ -72,7 +72,7 @@ func GetListItem(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.L
 		SELECT li.id, li.owner_id, li.list_id, li.good_id, li.offer_id, li.quantity, li.price_snapshot, li.is_purchased, li.created_by, li.created_at, li.updated_at
 		FROM list_items li
 		INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.owner_id = li.owner_id AND sl.deleted_at IS NULL
-		WHERE li.owner_id = $1 AND li.id = $2
+		WHERE li.owner_id = $1 AND li.id = $2 AND li.deleted_at IS NULL
 	`, ownerID, id)
 	it, err := scanListItem(row)
 	if err == pgx.ErrNoRows {
@@ -89,7 +89,7 @@ func GetListItemByID(ctx context.Context, db DBTX, id uuid.UUID) (*models.ListIt
 		SELECT li.id, li.owner_id, li.list_id, li.good_id, li.offer_id, li.quantity, li.price_snapshot, li.is_purchased, li.created_by, li.created_at, li.updated_at
 		FROM list_items li
 		INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.deleted_at IS NULL
-		WHERE li.id = $1
+		WHERE li.id = $1 AND li.deleted_at IS NULL
 	`, id)
 	it, err := scanListItem(row)
 	if err == pgx.ErrNoRows {
@@ -189,7 +189,7 @@ func ListListItemsSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since t
 			SELECT li.id, li.owner_id, li.list_id, li.good_id, li.offer_id, li.quantity, li.price_snapshot, li.is_purchased, li.created_by, li.created_at, li.updated_at
 			FROM list_items li
 			INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.owner_id = li.owner_id AND sl.deleted_at IS NULL
-			WHERE li.owner_id = $1
+			WHERE li.owner_id = $1 AND li.deleted_at IS NULL
 			ORDER BY li.updated_at ASC, li.id ASC
 		`, ownerID)
 	} else {
@@ -197,7 +197,7 @@ func ListListItemsSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since t
 			SELECT li.id, li.owner_id, li.list_id, li.good_id, li.offer_id, li.quantity, li.price_snapshot, li.is_purchased, li.created_by, li.created_at, li.updated_at
 			FROM list_items li
 			INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.owner_id = li.owner_id AND sl.deleted_at IS NULL
-			WHERE li.owner_id = $1 AND li.updated_at > $2
+			WHERE li.owner_id = $1 AND li.updated_at > $2 AND li.deleted_at IS NULL
 			ORDER BY li.updated_at ASC, li.id ASC
 		`, ownerID, since)
 	}
@@ -213,6 +213,50 @@ func ListListItemsSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since t
 			return nil, err
 		}
 		out = append(out, *it)
+	}
+	return out, rows.Err()
+}
+
+// SoftDeleteListItem tombstones an item (so the deletion can sync to other
+// devices) scoped to the owner whose data the item lives in. Returns ErrNotFound
+// if the item is missing or already deleted.
+func SoftDeleteListItem(ctx context.Context, db DBTX, ownerID, id uuid.UUID) error {
+	tag, err := db.Exec(ctx, `
+		UPDATE list_items SET deleted_at = now(), updated_at = now()
+		WHERE owner_id = $1 AND id = $2 AND deleted_at IS NULL
+	`, ownerID, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ListDeletedListItemIDsForOwnerSince returns ids of items tombstoned on the
+// owner's own lists since the given time, so the owner's other devices drop them.
+func ListDeletedListItemIDsForOwnerSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since time.Time) ([]uuid.UUID, error) {
+	rows, err := db.Query(ctx, `
+		SELECT id FROM list_items
+		WHERE owner_id = $1 AND deleted_at IS NOT NULL AND updated_at > $2
+		ORDER BY updated_at ASC, id ASC
+	`, ownerID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanUUIDs(rows)
+}
+
+func scanUUIDs(rows pgx.Rows) ([]uuid.UUID, error) {
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
 	}
 	return out, rows.Err()
 }

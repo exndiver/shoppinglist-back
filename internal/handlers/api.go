@@ -51,6 +51,7 @@ func NewAPI(svc *service.Service) http.Handler {
 
 	mux.HandleFunc("POST /list-items", a.postListItem)
 	mux.HandleFunc("PATCH /list-items/{id}", a.patchListItem)
+	mux.HandleFunc("DELETE /list-items/{id}", a.deleteListItem)
 	mux.HandleFunc("GET /list-items", a.getListItems)
 
 	mux.HandleFunc("POST /good-identities", a.postGoodIdentity)
@@ -978,6 +979,22 @@ func (a *API) patchListItem(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, listItemRespFrom(*it))
 }
 
+func (a *API) deleteListItem(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := a.owner(w, r)
+	if !ok {
+		return
+	}
+	id, ok := httpx.ParseUUID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if err := a.svc.DeleteListItem(r.Context(), ownerID, id); err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 type identityResp struct {
 	Source     string `json:"source"`
 	ExternalID string `json:"external_id"`
@@ -1026,7 +1043,10 @@ type syncBatchResp struct {
 	SharedLists     []listResp     `json:"shared_lists"`
 	SharedListItems []listItemResp `json:"shared_list_items"`
 	SharedGoods     []goodResp     `json:"shared_goods"`
-	ServerTime      time.Time      `json:"server_time"`
+	// Ids of list items tombstoned since the watermark (own + shared lists) so
+	// the client drops them locally.
+	DeletedListItemIDs []string  `json:"deleted_list_item_ids"`
+	ServerTime         time.Time `json:"server_time"`
 }
 
 func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
@@ -1111,6 +1131,11 @@ func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
 		writeSvcErr(w, err)
 		return
 	}
+	deletedItemIDs, err := a.svc.DeletedListItemIDsSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
 
 	respGoods := make([]goodResp, 0, len(goods))
 	for _, g := range goods {
@@ -1156,19 +1181,24 @@ func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
 	for _, g := range sharedGoods {
 		respSharedGoods = append(respSharedGoods, goodRespFrom(g))
 	}
+	respDeletedItemIDs := make([]string, 0, len(deletedItemIDs))
+	for _, id := range deletedItemIDs {
+		respDeletedItemIDs = append(respDeletedItemIDs, id.String())
+	}
 
 	httpx.WriteJSON(w, http.StatusOK, syncBatchResp{
-		Categories:      respCategories,
-		Goods:           respGoods,
-		Stores:          respStores,
-		Offers:          respOffers,
-		Lists:           respLists,
-		ListItems:       respListItems,
-		PriceRecords:    respPrices,
-		Shares:          respShares,
-		SharedLists:     respSharedLists,
-		SharedListItems: respSharedItems,
-		SharedGoods:     respSharedGoods,
-		ServerTime:      time.Now().UTC(),
+		Categories:         respCategories,
+		Goods:              respGoods,
+		Stores:             respStores,
+		Offers:             respOffers,
+		Lists:              respLists,
+		ListItems:          respListItems,
+		PriceRecords:       respPrices,
+		Shares:             respShares,
+		SharedLists:        respSharedLists,
+		SharedListItems:    respSharedItems,
+		SharedGoods:        respSharedGoods,
+		DeletedListItemIDs: respDeletedItemIDs,
+		ServerTime:         time.Now().UTC(),
 	})
 }
