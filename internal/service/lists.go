@@ -296,14 +296,13 @@ func (s *Service) ListListItemsSince(ctx context.Context, ownerID uuid.UUID, sin
 	}
 	out := make([]models.ListItem, 0, len(items))
 	for _, it := range items {
-		gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, it.GoodID)
-		if err != nil {
-			if errors.Is(err, repository.ErrNotFound) {
-				continue
-			}
-			return nil, err
+		// Resolve the good owner-agnostically: on a shared list the owner now
+		// receives items referencing a collaborator's good, which lives in the
+		// collaborator's catalog. Follow the merge chain when resolvable, but
+		// NEVER drop the item if the good isn't in the caller's own scope.
+		if gc, err := repository.ResolveGoodCanonicalAny(ctx, s.Pool, it.GoodID); err == nil {
+			it.GoodID = gc
 		}
-		it.GoodID = gc
 		out = append(out, it)
 	}
 	return out, nil
