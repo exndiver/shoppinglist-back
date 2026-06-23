@@ -15,6 +15,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// BuildVersion is a marker to confirm which code a deploy is actually running.
+// Bump it whenever you need to verify a deploy landed; can be overridden at
+// build time with -ldflags "-X .../internal/app.BuildVersion=<sha>".
+var BuildVersion = "92198f4-listowner-readfix"
+
 type Server struct {
 	cfg  config.Config
 	db   *pgxpool.Pool
@@ -26,6 +31,13 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) *Server {
 
 	health := handlers.NewHealthHandler(pool)
 	mux.HandleFunc("GET /health", health.Get)
+
+	// Build marker so a deploy can be verified to actually be running this code.
+	// Bump on each change that needs confirming live; overridable via -ldflags.
+	mux.HandleFunc("GET /version", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(BuildVersion + "\n"))
+	})
 
 	if cfg.MetricsEnabled {
 		mux.Handle(cfg.MetricsPath, metrics.Handler())

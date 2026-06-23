@@ -14,7 +14,7 @@ const HeaderDeviceID = "X-Device-Id"
 
 // IsPublicPath reports whether a path must be reachable without bearer auth.
 func IsPublicPath(path string) bool {
-	return path == "/health" || path == "/metrics"
+	return path == "/health" || path == "/metrics" || path == "/version"
 }
 
 // BearerOwner extracts Authorization: Bearer <owner_uuid> into context as owner id.
