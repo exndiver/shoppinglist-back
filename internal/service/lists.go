@@ -172,53 +172,66 @@ func (s *Service) AddListItem(ctx context.Context, ownerID uuid.UUID, id, listID
 	return &ListItemDetail{ListItem: *got, GoodName: g.Name}, nil
 }
 
-func (s *Service) PatchListItem(ctx context.Context, ownerID, itemID uuid.UUID, patch repository.ListItemPatch) error {
-	it, err := repository.GetListItem(ctx, s.Pool, ownerID, itemID)
+func (s *Service) PatchListItem(ctx context.Context, callerID, itemID uuid.UUID, patch repository.ListItemPatch) error {
+	// Resolve the item by id, then authorize the caller against its list so an
+	// edit-access member (not just the owner) may toggle/quantity-edit. The item
+	// lives in the list owner's scope, so the write is scoped to it.OwnerID.
+	it, err := repository.GetListItemByID(ctx, s.Pool, itemID)
 	if err != nil {
 		return err
 	}
-
-	gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, it.GoodID)
+	access, ok, err := repository.AccessForOwner(ctx, s.Pool, it.ListID, callerID)
 	if err != nil {
 		return err
 	}
+	if !ok {
+		return ErrNotFound
+	}
+	if access != models.ShareAccessEdit {
+		return ErrBadRequest
+	}
 
-	if patch.OfferIDPresent {
-		if patch.OfferID == nil {
-			// clearing offer allowed without validation
-		} else {
-			off, err := repository.GetOffer(ctx, s.Pool, ownerID, *patch.OfferID)
-			if err != nil {
-				return err
-			}
-			og, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, off.GoodID)
-			if err != nil {
-				return err
-			}
-			if og != gc {
-				return ErrBadRequest
-			}
+	// Offer pinning is validated within the item's owner scope. Clearing the
+	// offer needs no validation.
+	if patch.OfferIDPresent && patch.OfferID != nil {
+		gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, it.OwnerID, it.GoodID)
+		if err != nil {
+			return err
+		}
+		off, err := repository.GetOffer(ctx, s.Pool, it.OwnerID, *patch.OfferID)
+		if err != nil {
+			return err
+		}
+		og, err := repository.ResolveGoodCanonical(ctx, s.Pool, it.OwnerID, off.GoodID)
+		if err != nil {
+			return err
+		}
+		if og != gc {
+			return ErrBadRequest
 		}
 	}
 
-	return repository.PatchListItem(ctx, s.Pool, ownerID, itemID, patch)
+	return repository.PatchListItem(ctx, s.Pool, it.OwnerID, itemID, patch)
 }
 
-func (s *Service) GetListItemDetail(ctx context.Context, ownerID, itemID uuid.UUID) (*ListItemDetail, error) {
-	it, err := repository.GetListItem(ctx, s.Pool, ownerID, itemID)
+func (s *Service) GetListItemDetail(ctx context.Context, callerID, itemID uuid.UUID) (*ListItemDetail, error) {
+	it, err := repository.GetListItemByID(ctx, s.Pool, itemID)
 	if err != nil {
 		return nil, err
 	}
-	gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, it.GoodID)
-	if err != nil {
+	if _, ok, err := repository.AccessForOwner(ctx, s.Pool, it.ListID, callerID); err != nil {
 		return nil, err
+	} else if !ok {
+		return nil, ErrNotFound
 	}
-	it.GoodID = gc
-	g, err := repository.GetGood(ctx, s.Pool, ownerID, gc)
-	if err != nil {
-		return nil, err
+	// The good may belong to a collaborator (different scope), so look it up by
+	// id and degrade gracefully if it can't be found — the name is cosmetic.
+	goodName := ""
+	if g, err := repository.GetGoodAny(ctx, s.Pool, it.GoodID); err == nil {
+		it.GoodID = g.ID
+		goodName = g.Name
 	}
-	return &ListItemDetail{ListItem: *it, GoodName: g.Name}, nil
+	return &ListItemDetail{ListItem: *it, GoodName: goodName}, nil
 }
 
 func (s *Service) ListListsSince(ctx context.Context, ownerID uuid.UUID, since time.Time) ([]models.ShoppingList, error) {

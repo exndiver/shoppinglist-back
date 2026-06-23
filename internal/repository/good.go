@@ -56,6 +56,20 @@ func GetGood(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.Good,
 	return g, err
 }
 
+// GetGoodAny fetches a good by id regardless of owner. Used to render the name
+// of a collaborator's good (which lives in their scope) on a shared list item.
+func GetGoodAny(ctx context.Context, db DBTX, id uuid.UUID) (*models.Good, error) {
+	row := db.QueryRow(ctx, `
+		SELECT id, owner_id, category_id, name, normalized_name, merged_into, created_by, created_at, updated_at
+		FROM goods WHERE id = $1 AND `+sqlActive+`
+	`, id)
+	g, err := scanGood(row)
+	if err == pgx.ErrNoRows {
+		return nil, ErrNotFound
+	}
+	return g, err
+}
+
 func InsertGoodReturning(ctx context.Context, db DBTX, g models.Good) (*models.Good, error) {
 	var cb any
 	if g.CreatedBy != nil {

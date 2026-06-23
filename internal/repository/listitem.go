@@ -81,6 +81,23 @@ func GetListItem(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.L
 	return it, err
 }
 
+// GetListItemByID fetches an item by id regardless of owner (the item lives in
+// the list owner's scope). Used for collaborative edits where the caller is an
+// edit-access member, not the owner; the caller's access is checked separately.
+func GetListItemByID(ctx context.Context, db DBTX, id uuid.UUID) (*models.ListItem, error) {
+	row := db.QueryRow(ctx, `
+		SELECT li.id, li.owner_id, li.list_id, li.good_id, li.offer_id, li.quantity, li.price_snapshot, li.is_purchased, li.created_by, li.created_at, li.updated_at
+		FROM list_items li
+		INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.deleted_at IS NULL
+		WHERE li.id = $1
+	`, id)
+	it, err := scanListItem(row)
+	if err == pgx.ErrNoRows {
+		return nil, ErrNotFound
+	}
+	return it, err
+}
+
 func ListItemsByList(ctx context.Context, db DBTX, ownerID, listID uuid.UUID) ([]models.ListItem, error) {
 	rows, err := db.Query(ctx, `
 		SELECT li.id, li.owner_id, li.list_id, li.good_id, li.offer_id, li.quantity, li.price_snapshot, li.is_purchased, li.created_by, li.created_at, li.updated_at
