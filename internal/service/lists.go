@@ -236,9 +236,6 @@ func (s *Service) DeleteListItem(ctx context.Context, callerID, itemID uuid.UUID
 	return repository.SoftDeleteListItem(ctx, s.Pool, it.OwnerID, itemID)
 }
 
-// DeletedListItemIDsSince returns the ids of items tombstoned since `since` that
-// the caller should drop locally — both on their own lists and on lists shared
-// to them — deduplicated.
 func (s *Service) GetListItemDetail(ctx context.Context, callerID, itemID uuid.UUID) (*ListItemDetail, error) {
 	it, err := repository.GetListItemByID(ctx, s.Pool, itemID)
 	if err != nil {
