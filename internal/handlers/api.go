@@ -756,9 +756,13 @@ func (a *API) postUpsertList(w http.ResponseWriter, r *http.Request) {
 }
 
 type listResp struct {
-	ID        uuid.UUID `json:"id"`
-	OwnerID   uuid.UUID `json:"owner_id"`
-	Name      string    `json:"name"`
+	ID      uuid.UUID `json:"id"`
+	OwnerID uuid.UUID `json:"owner_id"`
+	Name    string    `json:"name"`
+	// Caller's effective access: "owner" | "edit" | "view". Empty on endpoints
+	// that don't compute it. Lets the client flag a list as shared-to-me
+	// (owner_id != caller) and read-only (view).
+	Access    string    `json:"access,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -806,6 +810,12 @@ func listRespFrom(l models.ShoppingList) listResp {
 		CreatedAt: l.CreatedAt,
 		UpdatedAt: l.UpdatedAt,
 	}
+}
+
+func listRespFromAccessible(l repository.AccessibleList) listResp {
+	r := listRespFrom(l.ShoppingList)
+	r.Access = l.Access
+	return r
 }
 
 func (a *API) getLists(w http.ResponseWriter, r *http.Request) {
@@ -1029,31 +1039,28 @@ func (a *API) postGoodIdentity(w http.ResponseWriter, r *http.Request) {
 }
 
 type syncBatchResp struct {
+	// Caller's own catalog plus catalog rows owned by others that are referenced
+	// by items on lists the caller can access (read-through imports).
 	Categories   []categoryResp    `json:"categories"`
 	Goods        []goodResp        `json:"goods"`
 	Stores       []storeResp       `json:"stores"`
 	Offers       []offerResp       `json:"offers"`
-	Lists        []listResp        `json:"lists"`
-	ListItems    []listItemResp    `json:"list_items"`
 	PriceRecords []priceRecordResp `json:"price_records"`
-	// Shared data: lists owned by others that the caller was granted access to,
-	// their items (from any participant), the goods those items reference (for
-	// local import), and the membership rows themselves (incl. revocations).
-	Shares             []shareResp       `json:"shares"`
-	SharedLists        []listResp        `json:"shared_lists"`
-	SharedListItems    []listItemResp    `json:"shared_list_items"`
-	SharedGoods        []goodResp        `json:"shared_goods"`
-	SharedOffers       []offerResp       `json:"shared_offers"`
-	SharedStores       []storeResp       `json:"shared_stores"`
-	SharedPriceRecords []priceRecordResp `json:"shared_price_records"`
-	// Ids of list items tombstoned since the watermark (own + shared lists) so
-	// the client drops them locally.
+	// Content of EVERY list the caller can access — lists they own and lists
+	// shared to them — scoped by list access, not row owner_id. Each list row
+	// carries the caller's access level.
+	Lists     []listResp     `json:"lists"`
+	ListItems []listItemResp `json:"list_items"`
+	// The caller's membership rows (incl. revocations) so a member learns when a
+	// list was un-shared and drops it locally.
+	Shares []shareResp `json:"shares"`
+	// Ids of items tombstoned on accessible lists so the client drops them.
 	DeletedListItemIDs []string  `json:"deleted_list_item_ids"`
 	ServerTime         time.Time `json:"server_time"`
 }
 
 func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := a.owner(w, r)
+	callerID, ok := a.owner(w, r)
 	if !ok {
 		return
 	}
@@ -1068,88 +1075,81 @@ func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	goods, err := a.svc.ListGoodsSince(r.Context(), ownerID, since)
+	// ── Catalog: caller's own, plus rows owned by others referenced by items on
+	// the caller's accessible lists (so shared items render their good/price). ──
+	goods, err := a.svc.ListGoodsSince(r.Context(), callerID, since)
 	if err != nil {
 		writeSvcErr(w, err)
 		return
 	}
-	// Goods a collaborator added to lists this caller owns. Delivered in the
-	// regular goods array (not shared_goods) so they are imported before the
-	// owner's own list items that reference them are applied.
-	foreignGoods, err := a.svc.ForeignGoodsForOwnedListsSince(r.Context(), ownerID, since)
+	foreignGoods, err := a.svc.ForeignGoodsForAccessibleListsSince(r.Context(), callerID, since)
 	if err != nil {
 		writeSvcErr(w, err)
 		return
 	}
 	goods = append(goods, foreignGoods...)
-	stores, err := a.svc.ListStoresSince(r.Context(), ownerID, since)
+
+	stores, err := a.svc.ListStoresSince(r.Context(), callerID, since)
 	if err != nil {
 		writeSvcErr(w, err)
 		return
 	}
-	offers, err := a.svc.ListOffersSince(r.Context(), ownerID, since)
+	foreignStores, err := a.svc.ForeignStoresForAccessibleListsSince(r.Context(), callerID, since)
 	if err != nil {
 		writeSvcErr(w, err)
 		return
 	}
-	lists, err := a.svc.ListListsSince(r.Context(), ownerID, since)
+	stores = append(stores, foreignStores...)
+
+	offers, err := a.svc.ListOffersSince(r.Context(), callerID, since)
 	if err != nil {
 		writeSvcErr(w, err)
 		return
 	}
-	listItems, err := a.svc.ListListItemsSince(r.Context(), ownerID, since)
+	foreignOffers, err := a.svc.ForeignOffersForAccessibleListsSince(r.Context(), callerID, since)
 	if err != nil {
 		writeSvcErr(w, err)
 		return
 	}
-	categories, err := a.svc.ListCategoriesSince(r.Context(), ownerID, since)
+	offers = append(offers, foreignOffers...)
+
+	prices, err := a.svc.ListPriceRecordsSince(r.Context(), callerID, since)
 	if err != nil {
 		writeSvcErr(w, err)
 		return
 	}
-	prices, err := a.svc.ListPriceRecordsSince(r.Context(), ownerID, since)
+	foreignPrices, err := a.svc.ForeignPriceRecordsForAccessibleListsSince(r.Context(), callerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	prices = append(prices, foreignPrices...)
+
+	categories, err := a.svc.ListCategoriesSince(r.Context(), callerID, since)
 	if err != nil {
 		writeSvcErr(w, err)
 		return
 	}
 
-	// Shared data the caller participates in as a member.
-	shares, err := a.svc.SharesForMemberSince(r.Context(), ownerID, since)
+	// ── List content for every accessible list (own + shared), list-scoped. ──
+	lists, err := a.svc.AccessibleListsSince(r.Context(), callerID, since)
 	if err != nil {
 		writeSvcErr(w, err)
 		return
 	}
-	sharedLists, err := a.svc.SharedListsSince(r.Context(), ownerID, since)
+	listItems, err := a.svc.AccessibleListItemsSince(r.Context(), callerID, since)
 	if err != nil {
 		writeSvcErr(w, err)
 		return
 	}
-	sharedItems, err := a.svc.SharedListItemsSince(r.Context(), ownerID, since)
+	deletedItemIDs, err := a.svc.DeletedItemIDsForAccessibleListsSince(r.Context(), callerID, since)
 	if err != nil {
 		writeSvcErr(w, err)
 		return
 	}
-	sharedGoods, err := a.svc.SharedGoodsSince(r.Context(), ownerID, since)
-	if err != nil {
-		writeSvcErr(w, err)
-		return
-	}
-	deletedItemIDs, err := a.svc.DeletedListItemIDsSince(r.Context(), ownerID, since)
-	if err != nil {
-		writeSvcErr(w, err)
-		return
-	}
-	sharedOffers, err := a.svc.SharedOffersSince(r.Context(), ownerID, since)
-	if err != nil {
-		writeSvcErr(w, err)
-		return
-	}
-	sharedStores, err := a.svc.SharedStoresSince(r.Context(), ownerID, since)
-	if err != nil {
-		writeSvcErr(w, err)
-		return
-	}
-	sharedPrices, err := a.svc.SharedPriceRecordsSince(r.Context(), ownerID, since)
+	// Membership rows for the caller (incl. revocations) so a member drops a list
+	// that was un-shared from them.
+	shares, err := a.svc.SharesForMemberSince(r.Context(), callerID, since)
 	if err != nil {
 		writeSvcErr(w, err)
 		return
@@ -1167,53 +1167,29 @@ func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
 	for _, o := range offers {
 		respOffers = append(respOffers, offerRespFrom(o))
 	}
-	respLists := make([]listResp, 0, len(lists))
-	for _, l := range lists {
-		respLists = append(respLists, listRespFrom(l))
-	}
-	respListItems := make([]listItemResp, 0, len(listItems))
-	for _, it := range listItems {
-		respListItems = append(respListItems, listItemRespFrom(service.ListItemDetail{ListItem: it}))
+	respPrices := make([]priceRecordResp, 0, len(prices))
+	for _, pr := range prices {
+		respPrices = append(respPrices, priceRecordRespFrom(pr))
 	}
 	respCategories := make([]categoryResp, 0, len(categories))
 	for _, c := range categories {
 		respCategories = append(respCategories, categoryRespFrom(c))
 	}
-	respPrices := make([]priceRecordResp, 0, len(prices))
-	for _, pr := range prices {
-		respPrices = append(respPrices, priceRecordRespFrom(pr))
+	respLists := make([]listResp, 0, len(lists))
+	for _, l := range lists {
+		respLists = append(respLists, listRespFromAccessible(l))
+	}
+	respListItems := make([]listItemResp, 0, len(listItems))
+	for _, it := range listItems {
+		respListItems = append(respListItems, listItemRespFrom(service.ListItemDetail{ListItem: it}))
 	}
 	respShares := make([]shareResp, 0, len(shares))
 	for _, s := range shares {
 		respShares = append(respShares, shareRespFrom(s))
 	}
-	respSharedLists := make([]listResp, 0, len(sharedLists))
-	for _, l := range sharedLists {
-		respSharedLists = append(respSharedLists, listRespFrom(l))
-	}
-	respSharedItems := make([]listItemResp, 0, len(sharedItems))
-	for _, it := range sharedItems {
-		respSharedItems = append(respSharedItems, listItemRespFrom(service.ListItemDetail{ListItem: it}))
-	}
-	respSharedGoods := make([]goodResp, 0, len(sharedGoods))
-	for _, g := range sharedGoods {
-		respSharedGoods = append(respSharedGoods, goodRespFrom(g))
-	}
 	respDeletedItemIDs := make([]string, 0, len(deletedItemIDs))
 	for _, id := range deletedItemIDs {
 		respDeletedItemIDs = append(respDeletedItemIDs, id.String())
-	}
-	respSharedOffers := make([]offerResp, 0, len(sharedOffers))
-	for _, o := range sharedOffers {
-		respSharedOffers = append(respSharedOffers, offerRespFrom(o))
-	}
-	respSharedStores := make([]storeResp, 0, len(sharedStores))
-	for _, s := range sharedStores {
-		respSharedStores = append(respSharedStores, storeRespFrom(s))
-	}
-	respSharedPrices := make([]priceRecordResp, 0, len(sharedPrices))
-	for _, pr := range sharedPrices {
-		respSharedPrices = append(respSharedPrices, priceRecordRespFrom(pr))
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, syncBatchResp{
@@ -1221,16 +1197,10 @@ func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
 		Goods:              respGoods,
 		Stores:             respStores,
 		Offers:             respOffers,
+		PriceRecords:       respPrices,
 		Lists:              respLists,
 		ListItems:          respListItems,
-		PriceRecords:       respPrices,
 		Shares:             respShares,
-		SharedLists:        respSharedLists,
-		SharedListItems:    respSharedItems,
-		SharedGoods:        respSharedGoods,
-		SharedOffers:       respSharedOffers,
-		SharedStores:       respSharedStores,
-		SharedPriceRecords: respSharedPrices,
 		DeletedListItemIDs: respDeletedItemIDs,
 		ServerTime:         time.Now().UTC(),
 	})

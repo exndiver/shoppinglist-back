@@ -162,6 +162,36 @@ func (s *Service) RenameSharedList(ctx context.Context, memberOwnerID, listID uu
 	return repository.UpdateShareDisplayName(ctx, s.Pool, memberOwnerID, listID, name)
 }
 
+// ── List-scoped sync (unified owner + member delivery) ────────────────────
+
+func (s *Service) AccessibleListsSince(ctx context.Context, callerID uuid.UUID, since time.Time) ([]repository.AccessibleList, error) {
+	return repository.ListAccessibleListsSince(ctx, s.Pool, callerID, since)
+}
+
+func (s *Service) AccessibleListItemsSince(ctx context.Context, callerID uuid.UUID, since time.Time) ([]models.ListItem, error) {
+	return repository.ListAccessibleListItemsSince(ctx, s.Pool, callerID, since)
+}
+
+func (s *Service) DeletedItemIDsForAccessibleListsSince(ctx context.Context, callerID uuid.UUID, since time.Time) ([]uuid.UUID, error) {
+	return repository.ListDeletedItemIDsForAccessibleListsSince(ctx, s.Pool, callerID, since)
+}
+
+func (s *Service) ForeignGoodsForAccessibleListsSince(ctx context.Context, callerID uuid.UUID, since time.Time) ([]models.Good, error) {
+	return repository.ListForeignGoodsForAccessibleListsSince(ctx, s.Pool, callerID, since)
+}
+
+func (s *Service) ForeignOffersForAccessibleListsSince(ctx context.Context, callerID uuid.UUID, since time.Time) ([]models.Offer, error) {
+	return repository.ListForeignOffersForAccessibleListsSince(ctx, s.Pool, callerID, since)
+}
+
+func (s *Service) ForeignStoresForAccessibleListsSince(ctx context.Context, callerID uuid.UUID, since time.Time) ([]models.Store, error) {
+	return repository.ListForeignStoresForAccessibleListsSince(ctx, s.Pool, callerID, since)
+}
+
+func (s *Service) ForeignPriceRecordsForAccessibleListsSince(ctx context.Context, callerID uuid.UUID, since time.Time) ([]models.PriceRecord, error) {
+	return repository.ListForeignPriceRecordsForAccessibleListsSince(ctx, s.Pool, callerID, since)
+}
+
 // accessOf resolves an owner's effective access to a list, mapping "no access"
 // to ErrNotFound so callers don't leak existence.
 func (s *Service) accessOf(ctx context.Context, listID, ownerID uuid.UUID) (models.ShareAccess, bool, error) {
