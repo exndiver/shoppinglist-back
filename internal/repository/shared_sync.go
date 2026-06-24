@@ -144,6 +144,91 @@ func ListSharedGoodsForMemberSince(ctx context.Context, db DBTX, memberOwnerID u
 	return out, rows.Err()
 }
 
+// ListSharedOffersForMemberSince returns offers for goods that appear on the
+// member's shared lists, so the member can render per-store prices for shared
+// items (and pick stores). Gated on a change to the offer or the membership.
+func ListSharedOffersForMemberSince(ctx context.Context, db DBTX, memberOwnerID uuid.UUID, since time.Time) ([]models.Offer, error) {
+	rows, err := db.Query(ctx, `
+		SELECT DISTINCT o.id, o.owner_id, o.good_id, o.store_id, o.created_by, o.created_at, o.updated_at, o.deleted_at
+		FROM offers o
+		INNER JOIN list_items li ON li.good_id = o.good_id AND li.deleted_at IS NULL
+		INNER JOIN list_shares sh
+		    ON sh.list_id = li.list_id AND sh.member_owner_id = $1 AND sh.revoked_at IS NULL
+		INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.`+sqlActiveFrag+`
+		WHERE (o.updated_at > $2 OR sh.updated_at > $2) AND o.`+sqlActiveFrag+`
+		ORDER BY o.updated_at ASC, o.id ASC
+	`, memberOwnerID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.Offer
+	for rows.Next() {
+		o, err := scanOffer(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *o)
+	}
+	return out, rows.Err()
+}
+
+// ListSharedStoresForMemberSince returns stores referenced by offers for goods
+// on the member's shared lists, so store names render on shared items.
+func ListSharedStoresForMemberSince(ctx context.Context, db DBTX, memberOwnerID uuid.UUID, since time.Time) ([]models.Store, error) {
+	rows, err := db.Query(ctx, `
+		SELECT DISTINCT s.id, s.owner_id, s.name, s.normalized_name, s.merged_into, s.created_by, s.created_at, s.updated_at
+		FROM stores s
+		INNER JOIN offers o ON o.store_id = s.id AND o.deleted_at IS NULL
+		INNER JOIN list_items li ON li.good_id = o.good_id AND li.deleted_at IS NULL
+		INNER JOIN list_shares sh
+		    ON sh.list_id = li.list_id AND sh.member_owner_id = $1 AND sh.revoked_at IS NULL
+		WHERE (s.updated_at > $2 OR sh.updated_at > $2) AND s.`+sqlActiveFrag+`
+		ORDER BY s.updated_at ASC, s.id ASC
+	`, memberOwnerID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.Store
+	for rows.Next() {
+		s, err := scanStore(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *s)
+	}
+	return out, rows.Err()
+}
+
+// ListSharedPriceRecordsForMemberSince returns price records of offers for goods
+// on the member's shared lists, so shared items show a price.
+func ListSharedPriceRecordsForMemberSince(ctx context.Context, db DBTX, memberOwnerID uuid.UUID, since time.Time) ([]models.PriceRecord, error) {
+	rows, err := db.Query(ctx, `
+		SELECT DISTINCT pr.id, pr.owner_id, pr.offer_id, pr.price, pr.pack_size, pr.unit, pr.recorded_at, pr.recorded_by, pr.created_at
+		FROM price_records pr
+		INNER JOIN offers o ON o.id = pr.offer_id AND o.deleted_at IS NULL
+		INNER JOIN list_items li ON li.good_id = o.good_id AND li.deleted_at IS NULL
+		INNER JOIN list_shares sh
+		    ON sh.list_id = li.list_id AND sh.member_owner_id = $1 AND sh.revoked_at IS NULL
+		WHERE (pr.created_at > $2 OR sh.updated_at > $2)
+		ORDER BY pr.created_at ASC, pr.id ASC
+	`, memberOwnerID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.PriceRecord
+	for rows.Next() {
+		pr, err := scanPriceRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *pr)
+	}
+	return out, rows.Err()
+}
+
 // ListDeletedSharedListItemIDsForMemberSince returns ids of items tombstoned on
 // lists the member has active access to, so the member's device drops them.
 func ListDeletedSharedListItemIDsForMemberSince(ctx context.Context, db DBTX, memberOwnerID uuid.UUID, since time.Time) ([]uuid.UUID, error) {

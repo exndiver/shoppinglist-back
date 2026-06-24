@@ -1039,10 +1039,13 @@ type syncBatchResp struct {
 	// Shared data: lists owned by others that the caller was granted access to,
 	// their items (from any participant), the goods those items reference (for
 	// local import), and the membership rows themselves (incl. revocations).
-	Shares          []shareResp    `json:"shares"`
-	SharedLists     []listResp     `json:"shared_lists"`
-	SharedListItems []listItemResp `json:"shared_list_items"`
-	SharedGoods     []goodResp     `json:"shared_goods"`
+	Shares             []shareResp       `json:"shares"`
+	SharedLists        []listResp        `json:"shared_lists"`
+	SharedListItems    []listItemResp    `json:"shared_list_items"`
+	SharedGoods        []goodResp        `json:"shared_goods"`
+	SharedOffers       []offerResp       `json:"shared_offers"`
+	SharedStores       []storeResp       `json:"shared_stores"`
+	SharedPriceRecords []priceRecordResp `json:"shared_price_records"`
 	// Ids of list items tombstoned since the watermark (own + shared lists) so
 	// the client drops them locally.
 	DeletedListItemIDs []string  `json:"deleted_list_item_ids"`
@@ -1136,6 +1139,21 @@ func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
 		writeSvcErr(w, err)
 		return
 	}
+	sharedOffers, err := a.svc.SharedOffersSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	sharedStores, err := a.svc.SharedStoresSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	sharedPrices, err := a.svc.SharedPriceRecordsSince(r.Context(), ownerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
 
 	respGoods := make([]goodResp, 0, len(goods))
 	for _, g := range goods {
@@ -1185,6 +1203,18 @@ func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
 	for _, id := range deletedItemIDs {
 		respDeletedItemIDs = append(respDeletedItemIDs, id.String())
 	}
+	respSharedOffers := make([]offerResp, 0, len(sharedOffers))
+	for _, o := range sharedOffers {
+		respSharedOffers = append(respSharedOffers, offerRespFrom(o))
+	}
+	respSharedStores := make([]storeResp, 0, len(sharedStores))
+	for _, s := range sharedStores {
+		respSharedStores = append(respSharedStores, storeRespFrom(s))
+	}
+	respSharedPrices := make([]priceRecordResp, 0, len(sharedPrices))
+	for _, pr := range sharedPrices {
+		respSharedPrices = append(respSharedPrices, priceRecordRespFrom(pr))
+	}
 
 	httpx.WriteJSON(w, http.StatusOK, syncBatchResp{
 		Categories:         respCategories,
@@ -1198,6 +1228,9 @@ func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
 		SharedLists:        respSharedLists,
 		SharedListItems:    respSharedItems,
 		SharedGoods:        respSharedGoods,
+		SharedOffers:       respSharedOffers,
+		SharedStores:       respSharedStores,
+		SharedPriceRecords: respSharedPrices,
 		DeletedListItemIDs: respDeletedItemIDs,
 		ServerTime:         time.Now().UTC(),
 	})

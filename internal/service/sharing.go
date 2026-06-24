@@ -198,3 +198,15 @@ func (s *Service) SharedGoodsSince(ctx context.Context, memberOwnerID uuid.UUID,
 func (s *Service) ForeignGoodsForOwnedListsSince(ctx context.Context, ownerID uuid.UUID, since time.Time) ([]models.Good, error) {
 	return repository.ListForeignGoodsForOwnedListsSince(ctx, s.Pool, ownerID, since)
 }
+
+func (s *Service) SharedOffersSince(ctx context.Context, memberOwnerID uuid.UUID, since time.Time) ([]models.Offer, error) {
+	return repository.ListSharedOffersForMemberSince(ctx, s.Pool, memberOwnerID, since)
+}
+
+func (s *Service) SharedStoresSince(ctx context.Context, memberOwnerID uuid.UUID, since time.Time) ([]models.Store, error) {
+	return repository.ListSharedStoresForMemberSince(ctx, s.Pool, memberOwnerID, since)
+}
+
+func (s *Service) SharedPriceRecordsSince(ctx context.Context, memberOwnerID uuid.UUID, since time.Time) ([]models.PriceRecord, error) {
+	return repository.ListSharedPriceRecordsForMemberSince(ctx, s.Pool, memberOwnerID, since)
+}

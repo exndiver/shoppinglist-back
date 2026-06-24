@@ -18,7 +18,7 @@ import (
 // BuildVersion is a marker to confirm which code a deploy is actually running.
 // Bump it whenever you need to verify a deploy landed; can be overridden at
 // build time with -ldflags "-X .../internal/app.BuildVersion=<sha>".
-var BuildVersion = "svc-goodfilter-fix"
+var BuildVersion = "shared-prices-sync"
 
 type Server struct {
 	cfg  config.Config
