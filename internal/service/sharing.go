@@ -205,38 +205,8 @@ func (s *Service) accessOf(ctx context.Context, listID, ownerID uuid.UUID) (mode
 	return access, true, nil
 }
 
-// ── Shared-data delta sync (member-facing) ────────────────────────────
-
+// SharesForMemberSince returns the caller's membership rows (incl. revocations)
+// so a member learns when a list was un-shared and drops it locally.
 func (s *Service) SharesForMemberSince(ctx context.Context, memberOwnerID uuid.UUID, since time.Time) ([]models.ListShare, error) {
 	return repository.ListSharesForMemberSince(ctx, s.Pool, memberOwnerID, since)
-}
-
-func (s *Service) SharedListsSince(ctx context.Context, memberOwnerID uuid.UUID, since time.Time) ([]models.ShoppingList, error) {
-	return repository.ListSharedListsForMemberSince(ctx, s.Pool, memberOwnerID, since)
-}
-
-func (s *Service) SharedListItemsSince(ctx context.Context, memberOwnerID uuid.UUID, since time.Time) ([]models.ListItem, error) {
-	return repository.ListSharedListItemsForMemberSince(ctx, s.Pool, memberOwnerID, since)
-}
-
-func (s *Service) SharedGoodsSince(ctx context.Context, memberOwnerID uuid.UUID, since time.Time) ([]models.Good, error) {
-	return repository.ListSharedGoodsForMemberSince(ctx, s.Pool, memberOwnerID, since)
-}
-
-// ForeignGoodsForOwnedListsSince returns goods a collaborator added to the
-// owner's own lists, so the owner can import them and render those items.
-func (s *Service) ForeignGoodsForOwnedListsSince(ctx context.Context, ownerID uuid.UUID, since time.Time) ([]models.Good, error) {
-	return repository.ListForeignGoodsForOwnedListsSince(ctx, s.Pool, ownerID, since)
-}
-
-func (s *Service) SharedOffersSince(ctx context.Context, memberOwnerID uuid.UUID, since time.Time) ([]models.Offer, error) {
-	return repository.ListSharedOffersForMemberSince(ctx, s.Pool, memberOwnerID, since)
-}
-
-func (s *Service) SharedStoresSince(ctx context.Context, memberOwnerID uuid.UUID, since time.Time) ([]models.Store, error) {
-	return repository.ListSharedStoresForMemberSince(ctx, s.Pool, memberOwnerID, since)
-}
-
-func (s *Service) SharedPriceRecordsSince(ctx context.Context, memberOwnerID uuid.UUID, since time.Time) ([]models.PriceRecord, error) {
-	return repository.ListSharedPriceRecordsForMemberSince(ctx, s.Pool, memberOwnerID, since)
 }
