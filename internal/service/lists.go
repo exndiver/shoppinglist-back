@@ -239,32 +239,6 @@ func (s *Service) DeleteListItem(ctx context.Context, callerID, itemID uuid.UUID
 // DeletedListItemIDsSince returns the ids of items tombstoned since `since` that
 // the caller should drop locally — both on their own lists and on lists shared
 // to them — deduplicated.
-func (s *Service) DeletedListItemIDsSince(ctx context.Context, ownerID uuid.UUID, since time.Time) ([]uuid.UUID, error) {
-	own, err := repository.ListDeletedListItemIDsForOwnerSince(ctx, s.Pool, ownerID, since)
-	if err != nil {
-		return nil, err
-	}
-	shared, err := repository.ListDeletedSharedListItemIDsForMemberSince(ctx, s.Pool, ownerID, since)
-	if err != nil {
-		return nil, err
-	}
-	seen := make(map[uuid.UUID]struct{}, len(own)+len(shared))
-	out := make([]uuid.UUID, 0, len(own)+len(shared))
-	for _, id := range own {
-		if _, dup := seen[id]; !dup {
-			seen[id] = struct{}{}
-			out = append(out, id)
-		}
-	}
-	for _, id := range shared {
-		if _, dup := seen[id]; !dup {
-			seen[id] = struct{}{}
-			out = append(out, id)
-		}
-	}
-	return out, nil
-}
-
 func (s *Service) GetListItemDetail(ctx context.Context, callerID, itemID uuid.UUID) (*ListItemDetail, error) {
 	it, err := repository.GetListItemByID(ctx, s.Pool, itemID)
 	if err != nil {

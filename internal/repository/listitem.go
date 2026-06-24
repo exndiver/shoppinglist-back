@@ -239,23 +239,6 @@ func SoftDeleteListItem(ctx context.Context, db DBTX, ownerID, id uuid.UUID) err
 	return nil
 }
 
-// ListDeletedListItemIDsForOwnerSince returns ids of items tombstoned on the
-// owner's own lists since the given time, so the owner's other devices drop them.
-func ListDeletedListItemIDsForOwnerSince(ctx context.Context, db DBTX, ownerID uuid.UUID, since time.Time) ([]uuid.UUID, error) {
-	rows, err := db.Query(ctx, `
-		SELECT li.id
-		FROM list_items li
-		INNER JOIN shopping_lists sl ON sl.id = li.list_id AND sl.owner_id = $1
-		WHERE li.deleted_at IS NOT NULL AND li.updated_at > $2
-		ORDER BY li.updated_at ASC, li.id ASC
-	`, ownerID, since)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	return scanUUIDs(rows)
-}
-
 func scanUUIDs(rows pgx.Rows) ([]uuid.UUID, error) {
 	var out []uuid.UUID
 	for rows.Next() {
