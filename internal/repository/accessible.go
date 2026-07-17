@@ -91,6 +91,29 @@ func ListAccessibleListItemsSince(ctx context.Context, db DBTX, callerID uuid.UU
 	return out, rows.Err()
 }
 
+// ListDeletedListIDsForCallerSince returns ids of tombstoned lists the caller
+// owned or was a member of, so every participant's device drops the list (and
+// its items) locally. Membership rows are intentionally matched regardless of
+// revocation: the deletion must still reach a member whose share row was
+// revoked at the same time.
+func ListDeletedListIDsForCallerSince(ctx context.Context, db DBTX, callerID uuid.UUID, since time.Time) ([]uuid.UUID, error) {
+	rows, err := db.Query(ctx, `
+		SELECT DISTINCT sl.id
+		FROM shopping_lists sl
+		LEFT JOIN list_shares sh
+		    ON sh.list_id = sl.id AND sh.member_owner_id = $1
+		WHERE sl.deleted_at IS NOT NULL
+		  AND (sl.owner_id = $1 OR sh.id IS NOT NULL)
+		  AND (sl.updated_at > $2 OR sh.updated_at > $2)
+		ORDER BY sl.id ASC
+	`, callerID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanUUIDs(rows)
+}
+
 // ListDeletedItemIDsForAccessibleListsSince returns ids of items tombstoned on
 // any list the caller can access, so every participant drops them locally.
 func ListDeletedItemIDsForAccessibleListsSince(ctx context.Context, db DBTX, callerID uuid.UUID, since time.Time) ([]uuid.UUID, error) {

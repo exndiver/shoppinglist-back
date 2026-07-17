@@ -218,6 +218,13 @@ func (s *Service) PatchListItem(ctx context.Context, callerID, itemID uuid.UUID,
 
 // DeleteListItem tombstones an item if the caller is the list author or an
 // edit-access member, so the deletion propagates to every participant.
+// DeleteList tombstones a list. Author-only by design: a member removing a
+// shared list from their device leaves it (DELETE /lists/{id}/membership)
+// rather than destroying it for everyone.
+func (s *Service) DeleteList(ctx context.Context, ownerID, listID uuid.UUID) error {
+	return repository.SoftDeleteList(ctx, s.Pool, ownerID, listID)
+}
+
 func (s *Service) DeleteListItem(ctx context.Context, callerID, itemID uuid.UUID) error {
 	it, err := repository.GetListItemByID(ctx, s.Pool, itemID)
 	if err != nil {

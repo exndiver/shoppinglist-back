@@ -131,47 +131,26 @@ type ListItemPatch struct {
 }
 
 func PatchListItem(ctx context.Context, db DBTX, ownerID, id uuid.UUID, patch ListItemPatch) error {
-	it, err := GetListItem(ctx, db, ownerID, id)
-	if err != nil {
-		return err
-	}
-	q := it.Quantity
-	if patch.Quantity != nil {
-		q = *patch.Quantity
-	}
-	ip := it.IsPurchased
-	if patch.IsPurchased != nil {
-		ip = *patch.IsPurchased
-	}
-
+	// Single atomic UPDATE: unset patch fields keep the current column value via
+	// COALESCE/CASE, so two collaborators patching different fields concurrently
+	// (one toggles purchased, one edits quantity) can no longer overwrite each
+	// other with stale in-memory copies.
 	var offerArg any
-	switch {
-	case patch.OfferIDPresent:
-		if patch.OfferID != nil {
-			offerArg = *patch.OfferID
-		} else {
-			offerArg = nil
-		}
-	default:
-		if it.OfferID != nil {
-			offerArg = *it.OfferID
-		} else {
-			offerArg = nil
-		}
+	if patch.OfferIDPresent && patch.OfferID != nil {
+		offerArg = *patch.OfferID
 	}
-
 	tag, err := db.Exec(ctx, `
 		UPDATE list_items
-		SET quantity = $3,
-		    is_purchased = $4,
-		    offer_id = $5,
+		SET quantity = COALESCE($3, quantity),
+		    is_purchased = COALESCE($4, is_purchased),
+		    offer_id = CASE WHEN $5 THEN $6::uuid ELSE offer_id END,
 		    updated_at = now()
-		WHERE owner_id = $1 AND id = $2
+		WHERE owner_id = $1 AND id = $2 AND deleted_at IS NULL
 		  AND EXISTS (
 		    SELECT 1 FROM shopping_lists sl
-		    WHERE sl.id = list_items.list_id AND sl.owner_id = list_items.owner_id AND sl.deleted_at IS NULL
+		    WHERE sl.id = list_items.list_id AND sl.deleted_at IS NULL
 		  )
-	`, ownerID, id, q, ip, offerArg)
+	`, ownerID, id, patch.Quantity, patch.IsPurchased, patch.OfferIDPresent, offerArg)
 	if err != nil {
 		return err
 	}

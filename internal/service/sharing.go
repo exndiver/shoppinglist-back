@@ -172,6 +172,10 @@ func (s *Service) AccessibleListItemsSince(ctx context.Context, callerID uuid.UU
 	return repository.ListAccessibleListItemsSince(ctx, s.Pool, callerID, since)
 }
 
+func (s *Service) DeletedListIDsForCallerSince(ctx context.Context, callerID uuid.UUID, since time.Time) ([]uuid.UUID, error) {
+	return repository.ListDeletedListIDsForCallerSince(ctx, s.Pool, callerID, since)
+}
+
 func (s *Service) DeletedItemIDsForAccessibleListsSince(ctx context.Context, callerID uuid.UUID, since time.Time) ([]uuid.UUID, error) {
 	return repository.ListDeletedItemIDsForAccessibleListsSince(ctx, s.Pool, callerID, since)
 }

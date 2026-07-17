@@ -48,6 +48,7 @@ func NewAPI(svc *service.Service) http.Handler {
 	mux.HandleFunc("POST /lists", a.postUpsertList)
 	mux.HandleFunc("GET /lists", a.getLists)
 	mux.HandleFunc("GET /lists/{id}", a.getList)
+	mux.HandleFunc("DELETE /lists/{id}", a.deleteList)
 
 	mux.HandleFunc("POST /list-items", a.postListItem)
 	mux.HandleFunc("PATCH /list-items/{id}", a.patchListItem)
@@ -880,6 +881,22 @@ func (a *API) getList(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *API) deleteList(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := a.owner(w, r)
+	if !ok {
+		return
+	}
+	id, ok := httpx.ParseUUID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if err := a.svc.DeleteList(r.Context(), ownerID, id); err != nil {
+		writeSvcErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 type listItemCreateReq struct {
 	ID            uuid.UUID  `json:"id"`
 	ListID        uuid.UUID  `json:"list_id"`
@@ -1055,8 +1072,11 @@ type syncBatchResp struct {
 	// list was un-shared and drops it locally.
 	Shares []shareResp `json:"shares"`
 	// Ids of items tombstoned on accessible lists so the client drops them.
-	DeletedListItemIDs []string  `json:"deleted_list_item_ids"`
-	ServerTime         time.Time `json:"server_time"`
+	DeletedListItemIDs []string `json:"deleted_list_item_ids"`
+	// Ids of tombstoned lists the caller owned or participated in, so every
+	// device drops the list (and its items) locally.
+	DeletedListIDs []string  `json:"deleted_list_ids"`
+	ServerTime     time.Time `json:"server_time"`
 }
 
 func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
@@ -1074,6 +1094,13 @@ func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "since is required for batch sync")
 		return
 	}
+
+	// Capture the watermark BEFORE running the queries: a row committed while
+	// the batch is being assembled would carry updated_at < a post-query
+	// timestamp yet be invisible to the queries — advancing the client past it
+	// forever. Taking the time first means such rows are re-sent next sync
+	// instead (upserts are idempotent, so the small overlap is harmless).
+	serverTime := time.Now().UTC()
 
 	// ── Catalog: caller's own, plus rows owned by others referenced by items on
 	// the caller's accessible lists (so shared items render their good/price). ──
@@ -1147,6 +1174,11 @@ func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
 		writeSvcErr(w, err)
 		return
 	}
+	deletedListIDs, err := a.svc.DeletedListIDsForCallerSince(r.Context(), callerID, since)
+	if err != nil {
+		writeSvcErr(w, err)
+		return
+	}
 	// Membership rows for the caller (incl. revocations) so a member drops a list
 	// that was un-shared from them.
 	shares, err := a.svc.SharesForMemberSince(r.Context(), callerID, since)
@@ -1191,6 +1223,10 @@ func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
 	for _, id := range deletedItemIDs {
 		respDeletedItemIDs = append(respDeletedItemIDs, id.String())
 	}
+	respDeletedListIDs := make([]string, 0, len(deletedListIDs))
+	for _, id := range deletedListIDs {
+		respDeletedListIDs = append(respDeletedListIDs, id.String())
+	}
 
 	httpx.WriteJSON(w, http.StatusOK, syncBatchResp{
 		Categories:         respCategories,
@@ -1202,6 +1238,7 @@ func (a *API) postSyncBatch(w http.ResponseWriter, r *http.Request) {
 		ListItems:          respListItems,
 		Shares:             respShares,
 		DeletedListItemIDs: respDeletedItemIDs,
-		ServerTime:         time.Now().UTC(),
+		DeletedListIDs:     respDeletedListIDs,
+		ServerTime:         serverTime,
 	})
 }

@@ -69,6 +69,24 @@ func GetShoppingList(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*mode
 	return l, err
 }
 
+// SoftDeleteList tombstones a list (author only — a member "deleting" a shared
+// list leaves it instead, via the membership endpoint). Items are not touched:
+// every read joins the list's deleted_at, so they disappear with it, and the
+// list tombstone itself is what propagates the deletion to other participants.
+func SoftDeleteList(ctx context.Context, db DBTX, ownerID, id uuid.UUID) error {
+	tag, err := db.Exec(ctx, `
+		UPDATE shopping_lists SET deleted_at = now(), updated_at = now()
+		WHERE owner_id = $1 AND id = $2 AND deleted_at IS NULL
+	`, ownerID, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // GetListOwner returns the owner of an active list regardless of who is asking.
 // Used when a collaborator writes to a list they don't own, so the row can be
 // scoped to the list owner's data while still attributing the author.
