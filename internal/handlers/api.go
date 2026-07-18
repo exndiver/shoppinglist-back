@@ -782,9 +782,12 @@ type listItemResp struct {
 	Quantity      float64    `json:"quantity"`
 	PriceSnapshot *float64   `json:"price_snapshot,omitempty"`
 	IsPurchased   bool       `json:"is_purchased"`
-	GoodName      string     `json:"good_name"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	// Owner id of the participant who added the line (attribution on shared
+	// lists). Absent on legacy rows stamped with a device id.
+	CreatedBy *string   `json:"created_by,omitempty"`
+	GoodName  string    `json:"good_name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func listItemRespFrom(it service.ListItemDetail) listItemResp {
@@ -797,6 +800,7 @@ func listItemRespFrom(it service.ListItemDetail) listItemResp {
 		Quantity:      it.Quantity,
 		PriceSnapshot: it.PriceSnapshot,
 		IsPurchased:   it.IsPurchased,
+		CreatedBy:     it.CreatedBy,
 		GoodName:      it.GoodName,
 		CreatedAt:     it.CreatedAt,
 		UpdatedAt:     it.UpdatedAt,
@@ -915,7 +919,11 @@ func (a *API) postListItem(w http.ResponseWriter, r *http.Request) {
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-	it, err := a.svc.AddListItem(r.Context(), ownerID, req.ID, req.ListID, req.GoodID, req.OfferID, req.Quantity, req.PriceSnapshot, ptrCreatedBy(r))
+	// Attribute the line to the CALLER's owner id (not the device header):
+	// collaborators map created_by onto their member labels, which are keyed by
+	// owner id.
+	cb := ownerID.String()
+	it, err := a.svc.AddListItem(r.Context(), ownerID, req.ID, req.ListID, req.GoodID, req.OfferID, req.Quantity, req.PriceSnapshot, &cb)
 	if err != nil {
 		writeSvcErr(w, err)
 		return
