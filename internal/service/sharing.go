@@ -35,6 +35,11 @@ func (s *Service) requireOwner(ctx context.Context, ownerID, listID uuid.UUID) e
 	return nil
 }
 
+// invitationTTL bounds how long an unused invite link stays valid. Links are
+// one-time already; the TTL closes the "link forgotten in a chat months ago"
+// window. Accept checks expires_at atomically.
+const invitationTTL = 7 * 24 * time.Hour
+
 // CreateInvitation issues a one-time token for a list the caller owns.
 func (s *Service) CreateInvitation(ctx context.Context, ownerID, listID uuid.UUID, access models.ShareAccess) (*models.ListInvitation, error) {
 	if !access.Valid() {
@@ -47,12 +52,14 @@ func (s *Service) CreateInvitation(ctx context.Context, ownerID, listID uuid.UUI
 	if err != nil {
 		return nil, err
 	}
+	expires := time.Now().UTC().Add(invitationTTL)
 	inv := models.ListInvitation{
-		Token:   token,
-		ListID:  listID,
-		OwnerID: ownerID,
-		Access:  access,
-		Status:  models.InvitationPending,
+		Token:     token,
+		ListID:    listID,
+		OwnerID:   ownerID,
+		Access:    access,
+		Status:    models.InvitationPending,
+		ExpiresAt: &expires,
 	}
 	if err := repository.InsertInvitation(ctx, s.Pool, inv); err != nil {
 		return nil, err

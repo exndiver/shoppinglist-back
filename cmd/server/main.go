@@ -41,6 +41,7 @@ func main() {
 	}
 
 	srv := app.NewServer(cfg, pool)
+	app.StartTombstonePruner(ctx, pool)
 
 	go func() {
 		if err := srv.Start(); err != nil {
