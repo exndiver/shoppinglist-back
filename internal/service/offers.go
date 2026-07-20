@@ -144,16 +144,26 @@ func (s *Service) ListOffersSince(ctx context.Context, ownerID uuid.UUID, since 
 		if items[i].DeletedAt != nil {
 			continue
 		}
-		gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, items[i].GoodID)
-		if err != nil {
+		// Participants of a shared list are equals, so an offer may legitimately
+		// point at a good or store owned by somebody else. Resolve
+		// owner-agnostically to match the write path (UpsertOffer) — resolving
+		// within the caller made every such offer unreadable.
+		//
+		// A row that still cannot be resolved keeps its raw id instead of
+		// failing the call: this feeds /sync/batch, and one dangling reference
+		// must never take down a client's entire sync.
+		gc, err := repository.ResolveGoodCanonicalAny(ctx, s.Pool, items[i].GoodID)
+		if err == nil {
+			items[i].GoodID = gc
+		} else if !isNotFound(err) {
 			return nil, err
 		}
-		items[i].GoodID = gc
-		sc, err := repository.ResolveStoreCanonical(ctx, s.Pool, ownerID, items[i].StoreID)
-		if err != nil {
+		sc, err := repository.ResolveStoreCanonicalAny(ctx, s.Pool, items[i].StoreID)
+		if err == nil {
+			items[i].StoreID = sc
+		} else if !isNotFound(err) {
 			return nil, err
 		}
-		items[i].StoreID = sc
 	}
 	return items, nil
 }
