@@ -525,7 +525,12 @@ func (a *API) postPriceRecord(w http.ResponseWriter, r *http.Request) {
 	if req.RecordedAt.IsZero() {
 		req.RecordedAt = time.Now().UTC()
 	}
-	pr, err := a.svc.AddPriceRecord(r.Context(), ownerID, req.ID, req.OfferID, req.Price, req.PackSize, req.Unit, req.RecordedAt, ptrCreatedBy(r))
+	// Attribute the reading to the CALLER's owner id, not the device header, the
+	// same way list items are attributed. A price history shared across
+	// participants is only useful if each row says whose reading it is, and
+	// collaborator labels are keyed by owner id.
+	rb := ownerID.String()
+	pr, err := a.svc.AddPriceRecord(r.Context(), ownerID, req.ID, req.OfferID, req.Price, req.PackSize, req.Unit, req.RecordedAt, &rb)
 	if err != nil {
 		writeSvcErr(w, err)
 		return
@@ -542,6 +547,9 @@ type priceRecordResp struct {
 	Unit       *string   `json:"unit,omitempty"`
 	RecordedAt time.Time `json:"recorded_at"`
 	CreatedAt  time.Time `json:"created_at"`
+	// Owner id of the participant who took this reading, so a shared history
+	// can show who recorded each price.
+	RecordedBy *string `json:"recorded_by,omitempty"`
 }
 
 func priceRecordRespFrom(pr models.PriceRecord) priceRecordResp {
@@ -554,6 +562,7 @@ func priceRecordRespFrom(pr models.PriceRecord) priceRecordResp {
 		Unit:       pr.Unit,
 		RecordedAt: pr.RecordedAt,
 		CreatedAt:  pr.CreatedAt,
+		RecordedBy: pr.RecordedBy,
 	}
 }
 
