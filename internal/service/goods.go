@@ -43,7 +43,19 @@ func (s *Service) UpsertGood(ctx context.Context, ownerID, id uuid.UUID, categor
 			NormalizedName: n,
 			CreatedBy:      createdBy,
 		}
-		return repository.InsertGoodReturning(ctx, s.Pool, g)
+		out, ierr := repository.InsertGoodReturning(ctx, s.Pool, g)
+		if ierr != nil {
+			// goods.id is a GLOBAL primary key while the GetGood probe above is
+			// owner-scoped, so a row owned by somebody else is invisible here and
+			// the insert trips the PK. That happens whenever a share member pushes
+			// back a good it pulled from the owner's shared list. It's a conflict
+			// over an id we don't own — report it as such instead of a 500.
+			if isUniqueViolation(ierr) {
+				return nil, ErrConflict
+			}
+			return nil, ierr
+		}
+		return out, nil
 	}
 	if err != nil {
 		return nil, err

@@ -26,7 +26,17 @@ func (s *Service) UpsertStore(ctx context.Context, ownerID, id uuid.UUID, name s
 			NormalizedName: n,
 			CreatedBy:      createdBy,
 		}
-		return repository.InsertStoreReturning(ctx, s.Pool, st)
+		out, ierr := repository.InsertStoreReturning(ctx, s.Pool, st)
+		if ierr != nil {
+			// Same as UpsertGood: stores.id is a global primary key but the probe
+			// above is owner-scoped, so a store owned by another participant is
+			// invisible and the insert trips the PK. Conflict, not internal error.
+			if isUniqueViolation(ierr) {
+				return nil, ErrConflict
+			}
+			return nil, ierr
+		}
+		return out, nil
 	}
 	if err != nil {
 		return nil, err
