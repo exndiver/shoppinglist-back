@@ -11,21 +11,27 @@ import (
 )
 
 func (s *Service) UpsertOffer(ctx context.Context, ownerID uuid.UUID, id, goodID, storeID uuid.UUID, createdBy *string) (*models.Offer, error) {
-	gc, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, goodID)
+	// Shared-list participants are equals: the good and the store may belong to
+	// any participant (a member pricing a good the owner added, at a store
+	// somebody else created), so resolve them owner-agnostically — same rule
+	// AddListItem already uses. The offer row itself is still owned by the
+	// caller, so each participant keeps their own price history and the app
+	// surfaces the newest.
+	gc, err := repository.ResolveGoodCanonicalAny(ctx, s.Pool, goodID)
 	if err != nil {
 		return nil, err
 	}
-	sc, err := repository.ResolveStoreCanonical(ctx, s.Pool, ownerID, storeID)
+	sc, err := repository.ResolveStoreCanonicalAny(ctx, s.Pool, storeID)
 	if err != nil {
 		return nil, err
 	}
 
 	if existing, err := repository.GetOffer(ctx, s.Pool, ownerID, id); err == nil {
-		eg, err := repository.ResolveGoodCanonical(ctx, s.Pool, ownerID, existing.GoodID)
+		eg, err := repository.ResolveGoodCanonicalAny(ctx, s.Pool, existing.GoodID)
 		if err != nil {
 			return nil, err
 		}
-		es, err := repository.ResolveStoreCanonical(ctx, s.Pool, ownerID, existing.StoreID)
+		es, err := repository.ResolveStoreCanonicalAny(ctx, s.Pool, existing.StoreID)
 		if err != nil {
 			return nil, err
 		}
@@ -49,8 +55,25 @@ func (s *Service) UpsertOffer(ctx context.Context, ownerID uuid.UUID, id, goodID
 	}
 	out, err := repository.InsertOfferReturning(ctx, s.Pool, o)
 	if err != nil {
-		// unique violation on (owner_id, good_id, store_id) — another offer for same triple
 		if isUniqueViolation(err) {
+			// Two different constraints can land here. First: the id already
+			// exists under ANOTHER participant — shared-list members reuse
+			// whichever offer they hold for a good+store pair, so they push back
+			// the owner's offer id. offers.id is a global primary key while the
+			// probe above is owner-scoped, so it never saw that row. If it
+			// already describes the same pair the caller's intent is satisfied;
+			// return it so both participants share one offer and simply attach
+			// their own price records to it.
+			if shared, aerr := repository.GetOfferAny(ctx, s.Pool, id); aerr == nil {
+				ag, gerr := repository.ResolveGoodCanonicalAny(ctx, s.Pool, shared.GoodID)
+				as, serr := repository.ResolveStoreCanonicalAny(ctx, s.Pool, shared.StoreID)
+				if gerr == nil && serr == nil && ag == gc && as == sc {
+					return shared, nil
+				}
+				return nil, ErrConflict
+			}
+			// Second: unique violation on (owner_id, good_id, store_id) — one of
+			// our own offers already covers the same pair under a different id.
 			triple, terr := repository.FindOfferByTriple(ctx, s.Pool, ownerID, gc, sc)
 			if terr != nil {
 				return nil, terr

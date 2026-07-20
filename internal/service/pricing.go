@@ -12,7 +12,11 @@ import (
 )
 
 func (s *Service) AddPriceRecord(ctx context.Context, ownerID uuid.UUID, id, offerID uuid.UUID, price float64, packSize *float64, unit *string, recordedAt time.Time, recordedBy *string) (*models.PriceRecord, error) {
-	off, err := repository.GetOffer(ctx, s.Pool, ownerID, offerID)
+	// The offer may have been created by another participant of a shared list
+	// (the client reuses whichever offer it holds for a good+store pair), so
+	// resolve it owner-agnostically. The price record stays owned by the caller
+	// — attribution is preserved, and readers surface the newest record.
+	off, err := repository.GetOfferAny(ctx, s.Pool, offerID)
 	if err != nil {
 		return nil, err
 	}

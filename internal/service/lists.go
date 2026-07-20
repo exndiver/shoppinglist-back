@@ -129,7 +129,9 @@ func (s *Service) AddListItem(ctx context.Context, ownerID uuid.UUID, id, listID
 
 	var resolvedOffer *uuid.UUID
 	if offerID != nil {
-		off, err := repository.GetOffer(ctx, s.Pool, ownerID, *offerID)
+		// The pinned offer may belong to another participant, same as the good
+		// above — participants of a shared list are equals.
+		off, err := repository.GetOfferAny(ctx, s.Pool, *offerID)
 		if err != nil {
 			return nil, err
 		}
@@ -193,14 +195,15 @@ func (s *Service) PatchListItem(ctx context.Context, callerID, itemID uuid.UUID,
 		return ErrBadRequest
 	}
 
-	// Offer pinning is validated within the item's owner scope. Clearing the
-	// offer needs no validation.
+	// A pinned offer may belong to any participant of a shared list, so it is
+	// resolved owner-agnostically; the good it points at must still match the
+	// item's good. Clearing the offer needs no validation.
 	if patch.OfferIDPresent && patch.OfferID != nil {
 		gc, err := repository.ResolveGoodCanonicalAny(ctx, s.Pool, it.GoodID)
 		if err != nil {
 			return err
 		}
-		off, err := repository.GetOffer(ctx, s.Pool, it.OwnerID, *patch.OfferID)
+		off, err := repository.GetOfferAny(ctx, s.Pool, *patch.OfferID)
 		if err != nil {
 			return err
 		}

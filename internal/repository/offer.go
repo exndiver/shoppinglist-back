@@ -57,6 +57,21 @@ func InsertOfferReturning(ctx context.Context, db DBTX, o models.Offer) (*models
 	return out, err
 }
 
+// GetOfferAny fetches an offer by id regardless of owner. Shared-list
+// participants are equals, so a collaborator may attach a price record to an
+// offer another participant created.
+func GetOfferAny(ctx context.Context, db DBTX, id uuid.UUID) (*models.Offer, error) {
+	row := db.QueryRow(ctx, `
+		SELECT `+offerCols+`
+		FROM offers WHERE id = $1 AND `+sqlActive,
+		id)
+	o, err := scanOffer(row)
+	if err == pgx.ErrNoRows {
+		return nil, ErrNotFound
+	}
+	return o, err
+}
+
 func GetOffer(ctx context.Context, db DBTX, ownerID, id uuid.UUID) (*models.Offer, error) {
 	row := db.QueryRow(ctx, `
 		SELECT `+offerCols+`
